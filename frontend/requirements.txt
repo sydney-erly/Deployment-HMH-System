@@ -1,0 +1,6 @@
+html-to-image
+jspdf
+flowbite
+
+react react-dom
+

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { auth } from "../lib/auth";
 import ActivityRunner from "../views/activities/ActivityRunner";
+import LoadingScreen from "../components/LoadingScreen";
 
 export default function ActivityPage() {
   const { lessonId } = useParams();
@@ -35,7 +36,7 @@ export default function ActivityPage() {
     })();
   }, [lessonId, nav]);
 
-  if (loading) return <div className="p-6 text-center">Loading activities...</div>;
+ 
 
   if (error) {
     return (
@@ -48,16 +49,26 @@ export default function ActivityPage() {
     );
   }
 
-  if (!activities.length) {
-    return (
-      <div className="p-6 text-center">
-        <p>No activities found for this lesson.</p>
-        <button className="hmh-btn hmh-btn-retry mt-4" onClick={() => nav("/dashboard")}>
-          Back to Dashboard
-        </button>
-      </div>
-    );
-  }
+  // If still loading, DO NOT show "No activities found"
+if (loading) {
+  return <LoadingScreen visible={true} />;
+}
+
+// Now it's safe – loading is done AND activities are empty
+if (!activities.length) {
+  return (
+    <div className="p-6 text-center">
+      <p>No activities found for this lesson.</p>
+      <button
+        className="hmh-btn hmh-btn-retry mt-4"
+        onClick={() => nav("/student-dashboard")}
+      >
+        Back to Dashboard
+      </button>
+    </div>
+  );
+}
+
 
   return <ActivityRunner activities={activities} lessonId={lessonId} />;
 }

@@ -1,62 +1,46 @@
 // src/components/LoadingScreen.jsx
 import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { assetUrl } from "../lib/media";
 
-//  Chapter-based mascot loaders
-const CHAPTER_LOADERS = {
-  1: "src/assets/mascots/redpandaLoad.webm",
-  2: "src/assets/mascots/penguinLoad.webm",
-  3: "src/assets/mascots/koalaLoad.webm",
-  4: "src/assets/mascots/bearLoad.webm",
-  5: "src/assets/mascots/birdLoad.webm",
-  6: "src/assets/mascots/pandaLoad.webm",
+// Correct asset import
+import pandaVideo from "../assets/rdLoading.webm";
 
-};
-
-// 📘 Optional: Chapter label text
-const CHAPTER_NAMES = {
-  1: "Red Panda",
-  2: "Penguin",
-  3: "Koala",
-  4: "Bear",
-  5: "Bird",
-  6: "Panda",
-};
-
-/**
- * A fully self-contained loading overlay:
- * - Plays the mascot loop per chapter
- * - Handles fade transitions
- * - Localized loading text
- * - Optional chapter label
- */
 export default function LoadingScreen({
   visible = true,
-  chapterId = 1,
   lang = "en",
+  duration = 10000, // 6 seconds
   bg = "#EAF1FF",
+  onFinish = () => {},
 }) {
-  const [useImgFallback, setUseImgFallback] = useState(false);
   const videoRef = useRef(null);
+  const [show, setShow] = useState(visible);
+  const [useImgFallback, setUseImgFallback] = useState(false);
 
   const prefersReduced =
     typeof window !== "undefined" &&
     window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
 
+  // Handle timed fade-out
   useEffect(() => {
-    if (!visible || !videoRef.current) return;
+    if (!show) return;
+    const t = setTimeout(() => {
+      setShow(false);
+      onFinish();
+    }, duration);
+    return () => clearTimeout(t);
+  }, [show, duration, onFinish]);
+
+  // Reduce-motion support
+  useEffect(() => {
+    if (!show || !videoRef.current) return;
     if (prefersReduced) {
       try {
         videoRef.current.pause();
       } catch {}
     }
-  }, [visible, prefersReduced]);
+  }, [show, prefersReduced]);
 
-  if (!visible) return null;
-
-  const chapterName = CHAPTER_NAMES[chapterId] || "";
-  const videoSrc = CHAPTER_LOADERS[chapterId] || CHAPTER_LOADERS[1];
+  if (!show) return null;
 
   const text =
     lang === "tl"
@@ -65,20 +49,19 @@ export default function LoadingScreen({
 
   return (
     <AnimatePresence mode="wait">
-      {visible && (
+      {show && (
         <motion.div
-          key="loading"
+          key="loader"
           initial={{ opacity: 1 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.8, ease: "easeInOut" }}
-          role="status"
-          aria-live="polite"
-          className="fixed inset-0 z-[999] grid place-items-center"
+          transition={{ duration: 0.6 }}
+          className="fixed inset-0 z-[999] grid place-items-center px-4"
           style={{ backgroundColor: bg }}
         >
-          <div className="flex flex-col items-center gap-6 select-none">
-            {/* Video mascot */}
+          <div className="flex flex-col items-center gap-4 sm:gap-6 select-none">
+
+            {/* Responsive panda loader */}
             {!useImgFallback && !prefersReduced ? (
               <video
                 ref={videoRef}
@@ -87,68 +70,48 @@ export default function LoadingScreen({
                 autoPlay
                 playsInline
                 preload="auto"
-                width={260}
-                height={260}
+                className="w-[160px] h-[160px] sm:w-[220px] sm:h-[220px] md:w-[260px] md:h-[260px]"
                 style={{
-                  width: 260,
-                  height: 260,
                   objectFit: "contain",
                   filter: "drop-shadow(0 8px 16px rgba(0,0,0,0.10))",
                 }}
                 onError={() => setUseImgFallback(true)}
-                controls={false}
-                disablePictureInPicture
-                controlsList="nodownload nofullscreen noplaybackrate"
               >
-                <source src={videoSrc} type="video/webm" />
+                <source src={pandaVideo} type="video/webm" />
               </video>
             ) : (
               <div
-                className="rounded-full"
+                className="rounded-full bg-[#7db6ff]"
                 style={{
-                  width: 260,
-                  height: 260,
-                  background: "#7db6ff",
+                  width: 200,
+                  height: 200,
                   boxShadow: "0 8px 16px rgba(0,0,0,0.10)",
                 }}
                 aria-hidden
               />
             )}
 
-            {/* Chapter name label */}
+            {/* Loading text */}
             <motion.p
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-              className="text-[#1137a0] text-base sm:text-lg font-bold tracking-wide"
+              transition={{ delay: 0.2 }}
+              className="text-[#2E4BFF] font-semibold text-xs sm:text-sm md:text-base tracking-wide text-center"
             >
-              {lang === "tl"
-                ? `Kabanata ${chapterId}: ${chapterName}`
-                : `Chapter ${chapterId}: ${chapterName}`}
+              {text}
             </motion.p>
 
-            {/* Typewriter text */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.6 }}
-              className="text-sm sm:text-base font-semibold text-[#2E4BFF] tracking-wide"
-              style={{ letterSpacing: "0.06em" }}
-            >
-              <span className="hmh-typing">{text}</span>
-            </motion.div>
-
-            {/* Progress Dots (optional aesthetic) */}
+            {/* Dots */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 1 }}
-              className="flex gap-2 mt-2"
+              transition={{ delay: 0.5 }}
+              className="flex gap-2 mt-1"
             >
               {[0, 1, 2].map((dot) => (
                 <motion.div
                   key={dot}
-                  className="w-2 h-2 rounded-full bg-[#2E4BFF]"
+                  className="w-2 h-2 sm:w-3 sm:h-3 rounded-full bg-[#2E4BFF]"
                   animate={{ opacity: [0.3, 1, 0.3] }}
                   transition={{
                     duration: 1.2,
