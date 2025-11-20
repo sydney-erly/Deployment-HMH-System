@@ -1,12 +1,13 @@
 // src/pages/TeacherStudentActivityLog.jsx
-// updated 11/14/2025
+// updated with Emotion icon fix and cleaned imports
+// updated 11/20/2025 04:28PM
+
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
-import { FiClock, FiSearch } from "react-icons/fi";
-import { GoHome } from "react-icons/go";
+import { FiClock, FiSearch, FiSmile } from "react-icons/fi";
+import { IoHappyOutline } from "react-icons/io5"; // NEW EMOTION ICON
 import { PiStudentBold } from "react-icons/pi";
 import { SiGoogleanalytics } from "react-icons/si";
-
 
 /**
  * Props:
@@ -19,7 +20,6 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
   const [q, setQ] = useState("");
   const [type, setType] = useState("ALL"); // ALL | LESSON | EMOTION | SPEECH
 
-
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -28,7 +28,6 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
         // Try main activity endpoint first
         let res = await apiFetch(`/teacher/student/${studentId}/activity`, { token });
 
-
         if (!Array.isArray(res) || !res.length) {
           // fallback: fetch overview + progress
           const [ov, pr] = await Promise.all([
@@ -36,9 +35,7 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
             apiFetch(`/teacher/student/${studentId}/progress`, { token }),
           ]);
 
-
           const synth = [];
-
 
           // Session data
           if (ov?.last_session_time) {
@@ -53,7 +50,6 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
             });
           }
 
-
           // Lessons
           (pr?.lesson_avg ?? []).forEach((r) => {
             synth.push({
@@ -65,7 +61,6 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
             });
           });
 
-
           // Speech practice
           (pr?.speech ?? []).forEach((r) => {
             synth.push({
@@ -76,7 +71,6 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
               score: typeof r.avg === "number" ? Math.round(r.avg) : undefined,
             });
           });
-
 
           // Emotion recognition
           const emoSrc = (pr?.emotion_trend?.length ? pr.emotion_trend : pr?.emotion) ?? [];
@@ -90,11 +84,9 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
             });
           });
 
-
           // Sort by newest first
           res = synth.sort((a, b) => new Date(b.ts) - new Date(a.ts));
         }
-
 
         if (alive) setItems(res);
       } catch (e) {
@@ -105,12 +97,10 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
       }
     })();
 
-
     return () => {
       alive = false;
     };
   }, [studentId, token]);
-
 
   // ---- Filters & grouping ----
   const filtered = useMemo(() => {
@@ -125,18 +115,20 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
       .sort((a, b) => new Date(b.ts) - new Date(a.ts));
   }, [items, type, q]);
 
-
   const groups = useMemo(() => {
     const map = new Map();
     filtered.forEach((it) => {
       const d = new Date(it.ts);
-      const key = d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+      const key = d.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(it);
     });
     return Array.from(map.entries());
   }, [filtered]);
-
 
   return (
     <div className="flex flex-col gap-4">
@@ -152,7 +144,6 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
           <Toggle value={type} onChange={setType} />
         </div>
 
-
         <div className="relative w-full md:w-1/2">
           <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
@@ -163,7 +154,6 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
           />
         </div>
       </div>
-
 
       {/* Body */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm">
@@ -190,9 +180,7 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
   );
 }
 
-
 /* ---------- UI Bits ---------- */
-
 
 function Toggle({ value, onChange }) {
   const options = [
@@ -221,24 +209,29 @@ function Toggle({ value, onChange }) {
   );
 }
 
-
 function ActivityRow({ item }) {
-  const time = new Date(item.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const time = new Date(item.ts).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
   const chip = (label) => (
     <span className="px-2 py-0.5 text-xs rounded-lg border bg-[#F9FAFB] text-gray-700">{label}</span>
   );
 
-
   const icon = (() => {
     switch (item.type) {
-      case "LESSON": return <SiGoogleanalytics className="text-[#2E4bff]" />;
-      case "SPEECH": return <PiStudentBold className="text-[#2E4bff]" />;
-      case "EMOTION": return <GoHome className="text-[#2E4bff]" />;
-      case "SESSION": return <FiClock className="text-[#2E4bff]" />;
-      default: return <FiClock className="text-[#2E4bff]" />;
+      case "LESSON":
+        return <SiGoogleanalytics className="text-[#2E4bff]" />;
+      case "SPEECH":
+        return <PiStudentBold className="text-[#2E4bff]" />;
+      case "EMOTION":
+        return <IoHappyOutline className="text-[#2E4bff]" />; // FIXED ICON
+      case "SESSION":
+        return <FiClock className="text-[#2E4bff]" />;
+      default:
+        return <FiClock className="text-[#2E4bff]" />;
     }
   })();
-
 
   return (
     <li className="flex items-start gap-3">
@@ -248,12 +241,15 @@ function ActivityRow({ item }) {
       <div className="flex-1 min-w-0">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
           <div className="min-w-0">
-            <div className="font-semibold text-[#111] truncate">{item.title || item.type}</div>
+            <div className="font-semibold text-[#111] truncate">
+              {item.title || item.type}
+            </div>
             {item.detail && <div className="text-sm text-gray-600 truncate">{item.detail}</div>}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {typeof item.score === "number" && chip(`Score ${item.score}%`)}
-            {typeof item.duration_sec === "number" && chip(`${Math.round(item.duration_sec / 60)}m`)}
+            {typeof item.duration_sec === "number" &&
+              chip(`${Math.round(item.duration_sec / 60)}m`)}
             <span className="text-xs text-gray-500">{time}</span>
           </div>
         </div>
@@ -261,10 +257,3 @@ function ActivityRow({ item }) {
     </li>
   );
 }
-
-
-
-
-
-
-

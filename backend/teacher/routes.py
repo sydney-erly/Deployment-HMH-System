@@ -1,5 +1,5 @@
 # backend/teacher/routes.py
-#updated 11/14/2025
+#updated 11/20/2025 04:28PM
 
 
 # from backend.utils.defaults import assign_default_photo_path
@@ -344,45 +344,71 @@ def overview():
     students_count = len(students_rows)
     sessions_today = len(sessions_rows)
 
-#---------------------------------------------------------------------------------------------------------------------------
-    # --- Score trends: return ALL records across ALL time ---
-    def _to_ph_day(dt):
-        if not dt:
-            return None
-        if isinstance(dt, str):
-            try:
-                dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
-            except Exception:
-                return None
-        return dt.astimezone(timezone(timedelta(hours=8))).date().isoformat()
+    # ============================================================
+    #   DAILY SCORE TRENDS (Python-only, accurate, zeros included)
+    # ============================================================
 
-    # Get ALL attempts (no limiting, no RPC)
+    def _to_ph_day(date_like):
+        if not date_like:
+            return None
+        s = str(date_like)
+        try:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            return dt.astimezone(timezone(timedelta(hours=8))).date().isoformat()
+        except Exception:
+            # Already YYYY-MM-DD
+            return s.split("T")[0]
+
+    def _normalize_and_sort(rows):
+        bucket = {}
+        for r in rows or []:
+            raw_day = r.get("date") or r.get("day")
+            ph_day = _to_ph_day(raw_day)
+
+            # --- CRITICAL FIX: zero should NOT be skipped ---
+            val = r.get("avg")
+            if val is None:
+                val = r.get("score")
+            if val is None:
+                val = r.get("average_score")
+
+            try:
+                val = float(val)
+            except Exception:
+                continue
+
+            if not ph_day:
+                continue
+
+            agg = bucket.setdefault(ph_day, {"sum": 0.0, "n": 0})
+            agg["sum"] += val
+            agg["n"] += 1
+
+        # Final averaged timeline
+        series = [
+            {"date": d, "avg": round(v["sum"] / max(v["n"], 1), 2)}
+            for d, v in bucket.items()
+        ]
+        series.sort(key=lambda x: x["date"])
+        return series[-14:]  # last 14 real days
+
+    # ---- ALWAYS use activity_attempts (ignore the broken RPC) ----
+    since_utc = (now_ph() - timedelta(days=60)).astimezone(timezone.utc).isoformat()
+
     rows = sb_safe_select(
         sb.table("activity_attempts")
           .select("score, created_at")
-          .order("created_at")
+          .gte("created_at", since_utc)
     )
 
-    bucket = {}
-    for r in rows:
-        score = r.get("score")
-        dt = r.get("created_at")
-        if score is None or not dt:
-            continue
-        day = _to_ph_day(dt)
-        if not day:
-            continue
-        b = bucket.setdefault(day, {"sum": 0.0, "n": 0})
-        b["sum"] += float(score)
-        b["n"] += 1
-
-    # Convert to list (ALL dates preserved)
-    line_series = [
-        {"date": d, "avg": round(v["sum"] / max(1, v["n"]), 1)}
-        for d, v in sorted(bucket.items())
+    shaped = [
+        {"date": r.get("created_at"), "score": r.get("score")}
+        for r in rows
     ]
 
+    line_series = _normalize_and_sort(shaped)
     avg_last = line_series[-1]["avg"] if line_series else 0.0
+
 
 
 #---------------------------------------------------------------------------------------------------------------------------
@@ -1553,16 +1579,21 @@ def student_activity_log(students_id):
         )
         for a in attempts:
             act = a.get("activities") or {}
-            t = (act.get("type") or "").upper()
-            if t not in ("SPEECH", "EMOTION"):
+            t = (act.get("type") or "").lower()
+            if t not in ("asr", "speech", "emotion"):
                 continue
+
+            # normalize type for output
+            out_type = "SPEECH" if t in ("asr", "speech") else "EMOTION"
+
             events.append({
-                "type": t,
+                "type": out_type,
                 "ts": a.get("created_at"),
-                "title": "Speech practice" if t == "SPEECH" else "Emotion recognition",
-                "detail": "Pronunciation accuracy" if t == "SPEECH" else "Facial mimic accuracy",
+                "title": "Speech practice" if out_type == "SPEECH" else "Emotion recognition",
+                "detail": "Pronunciation accuracy" if out_type == "SPEECH" else "Facial mimic accuracy",
                 "score": round(a["score"]) if isinstance(a.get("score"), (int, float)) else None
             })
+
 
 
         events.sort(key=lambda x: x.get("ts") or "", reverse=True)
