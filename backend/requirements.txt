@@ -1,0 +1,35 @@
+# --- Core backend ---
+flask
+flask-cors
+psycopg[binary]
+bcrypt
+pyjwt
+python-dotenv
+supabase>=2.4.0
+postgrest
+httpx
+flask-limiter
+
+# --- ASR and Whisper ---
+faster-whisper==1.0.3
+ctranslate2>=4.3.0
+transformers==4.43.3
+huggingface_hub==0.23.5
+sentencepiece==0.2.0
+soundfile==0.12.1
+ffmpeg-python==0.2.0
+
+# --- ML stack ---
+
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch==2.4.0
+torchaudio==2.4.0
+
+# --- Image & emotion analysis stack ---
+numpy==1.26.4
+opencv-python-headless==4.9.0.80
+mediapipe==0.10.21
+imutils==0.5.4
+gdown==5.2.0
+deepface==0.0.95
+
