@@ -1,0 +1,265 @@
+/* ========================================================================
+   Tailwind + Flowbite Imports
+   ======================================================================== */
+@import "tailwindcss";
+@import "flowbite";
+
+/* ========================================================================
+   BASE LAYER — global styles, fonts, HTML fixes
+   ======================================================================== */
+@layer base {
+  html {
+    font-family: 'Poppins', sans-serif !important;
+    background-color: #EAE4D0 !important;
+    color: #000000;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: none;
+    scrollbar-color: #7bade6 #EAE4D0;
+    scrollbar-width: thin;
+    font-feature-settings: "ss01" on, "cv05" on;
+  }
+
+  body {
+    background-color: transparent !important;
+    overflow-x: hidden;
+  }
+
+  #root {
+    background-color: transparent !important;
+  }
+
+  button {
+    outline: none;
+  }
+
+  /* Mobile-only override — ensure clean background and allow zoom */
+  @media (max-width: 1023.98px) {
+    html, body {
+      overflow-x: auto !important;
+      touch-action: auto !important;
+      background-color: #F6F7FB !important;
+    }
+  }
+}
+
+/* ========================================================================
+   COMPONENT LAYER — Reusable UI (Buttons, Progress Bars, Top Bar)
+   ======================================================================== */
+@layer components {
+
+  /* ---------- Base Button ---------- */
+  .hmh-btn {
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-2xl 
+           font-bold transition-all duration-200;
+    box-shadow: 0 6px 0 rgba(0, 0, 0, 0.2);
+    transform: translateY(0);
+  }
+  .hmh-btn:active {
+    transform: translateY(3px);
+    box-shadow: 0 3px 0 rgba(0, 0, 0, 0.3);
+  }
+
+  /* ---------- 3D Modifier ---------- */
+  .hmh-btn-3d {
+    background: linear-gradient(to bottom, #facc15, #eab308);
+    box-shadow: 0 4px 0 #ca8a04;
+    color: #1c1917;
+  }
+  .hmh-btn-3d:active {
+    transform: translateY(2px);
+    box-shadow: 0 2px 0 #ca8a04;
+  }
+
+  /* ---------- Utility Buttons ---------- */
+  .hmh-btn-check      { @apply bg-green-500  text-white; }
+  .hmh-btn-check:hover{ @apply bg-green-600; }
+
+  .hmh-btn-retry      { @apply bg-red-500    text-white; }
+  .hmh-btn-retry:hover{ @apply bg-red-600; }
+
+  .hmh-btn-play       { @apply bg-blue-500   text-white; }
+  .hmh-btn-play:hover { @apply bg-blue-600; }
+
+  .hmh-btn-mic        { @apply bg-purple-500 text-white; }
+  .hmh-btn-mic:hover  { @apply bg-purple-600; }
+
+  .hmh-btn-continue   { @apply bg-yellow-500 text-white; }
+  .hmh-btn-continue:hover { @apply bg-yellow-600; }
+
+  /* ---------- Progress Bar ---------- */
+  .hmh-progress {
+    @apply w-full h-6 rounded-xl bg-gray-200 overflow-hidden shadow-inner;
+    box-shadow: inset 0 3px 6px rgba(0,0,0,0.15);
+  }
+  .hmh-progress-fill {
+    @apply h-full transition-all duration-300 ease-out 
+           bg-gradient-to-r from-green-400 to-green-600;
+    box-shadow: inset 0 -2px 4px rgba(0,0,0,0.3);
+  }
+
+  /* ---------- Activity Top Bar ---------- */
+  .hmh-topbar { @apply flex items-center justify-between w-full mb-4; }
+  .hmh-exit-btn {
+    @apply text-gray-500 hover:text-red-500 text-xl font-bold cursor-pointer;
+  }
+  .hmh-stars { @apply flex items-center gap-1 text-yellow-400 text-xl; }
+}
+
+/* ========================================================================
+   ANIMATIONS LAYER — Motion, feedback, unlock, shake, typing
+   ======================================================================== */
+
+@layer utilities {
+
+  /* ---------- Slide Up Fade ---------- */
+  @keyframes hmh-slide-up-fade {
+    0%   { transform: translateY(12px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+  .hmh-animate-in {
+    animation: hmh-slide-up-fade 280ms ease-out both;
+  }
+
+  /* ---------- Subtle Pop ---------- */
+  @keyframes hmh-pop {
+    0% { transform: scale(.98); }
+    100% { transform: scale(1); }
+  }
+  .hmh-pop {
+    animation: hmh-pop 160ms ease-out;
+  }
+
+  /* ---------- Shake (error state) ---------- */
+  @keyframes hmh-shake {
+    10%, 90% { transform: translateX(-2px); }
+    20%, 80% { transform: translateX(4px); }
+    30%, 50%, 70% { transform: translateX(-6px); }
+    40%, 60% { transform: translateX(6px); }
+  }
+  .animate-shake {
+    animation: hmh-shake 0.22s linear;
+  }
+
+  /* ---------- Lesson Unlock Pulse ---------- */
+  @keyframes hmh-unlock-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.6); }
+    70%  { box-shadow: 0 0 0 12px rgba(251, 191, 36, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0); }
+  }
+  .unlock-pulse {
+    animation: hmh-unlock-pulse 1.2s ease-out 3;
+  }
+
+  /* ---------- Typing effect ---------- */
+  @keyframes hmh-typing { from { width: 0; } to { width: var(--nch, 10ch); } }
+  @keyframes hmh-caret { 0%,100%{border-color:transparent;} 50%{border-color:currentColor;} }
+
+  .hmh-typing {
+    display:inline-block;
+    white-space:nowrap;
+    overflow:hidden;
+    border-right:2px solid currentColor;
+    width:0;
+    animation:
+      hmh-typing var(--dur,1.6s) steps(var(--chars,10)) forwards,
+      hmh-caret 1s steps(1) infinite;
+  }
+
+  /* ---------- Hide Scrollbar Utility ---------- */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
+/* ========================================================================
+   PDF-ONLY ZOOM MODE (Teacher Report Capture)
+   Does NOT affect the live UI. Only active during JS-triggered capture.
+   ======================================================================== */
+#reportSections.pdf-zoom {
+  transform: scale(1);
+  transform-origin: top left;
+}
+
+#reportSections.pdf-zoom svg text {
+  font-size: 3em !important;
+}
+
+#reportSections.pdf-zoom .chart-title-bar {
+  font-size: 3em !important;
+}
+
+#reportSections.pdf-zoom .word-chip {
+  font-size: 1.55em !important;
+}
+
+#reportSections.pdf-zoom #summarySection .section-title-bar,
+#reportSections.pdf-zoom #speechSection .section-title-bar,
+#reportSections.pdf-zoom #emotionSection .section-title-bar {
+  font-size: 2em !important;
+}
+
+
+/* ---------- Base Button ---------- */
+.hmh-btn {
+  @apply inline-flex items-center justify-center px-6 py-3 rounded-2xl font-bold transition-all duration-200;
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.2);
+  transform: translateY(0);
+}
+.hmh-btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* ---------- 3D Modifier ---------- */
+.hmh-btn-3d {
+  background: linear-gradient(to bottom, #facc15, #eab308);
+  box-shadow: 0 4px 0 #ca8a04;
+  color: #1c1917;
+}
+.hmh-btn-3d:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #ca8a04;
+}
+
+/* ---------- Activities ---------- */
+.activity-card {
+  width: 9rem;
+  height: 11rem;
+  border-radius: 1.5rem;
+  background: linear-gradient(145deg, #ffffff, #d7e6ff);
+  box-shadow:
+    0 6px 0 #ffc84a,           /* bottom edge (yellow) */
+    0 10px 20px rgba(0, 0, 0, 0.15); /* outer soft drop shadow */
+  cursor: pointer;
+  transform: translateY(0);
+  transition: all 0.25s ease;
+}
+
+.activity-card:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    0 8px 0 #ffc84a,
+    0 12px 24px rgba(0, 0, 0, 0.25);
+}
+
+.activity-card.selected {
+  border: 3px solid #2e4bff;
+  box-shadow:
+    0 8px 0 #2e4bff,
+    0 12px 24px rgba(0, 0, 0, 0.3);
+  transform: translateY(-3px);
+}
+
+.activity-card.wrong {
+  border: 3px solid #e65460;
+  box-shadow:
+    0 8px 0 #e65460,
+    0 12px 24px rgba(0, 0, 0, 0.25);
+  animation: shake 0.35s ease-in-out;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
