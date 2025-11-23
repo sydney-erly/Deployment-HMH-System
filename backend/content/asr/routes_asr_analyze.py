@@ -56,8 +56,19 @@ print(f"[ASR] TL_DIR={TL_DIR}")
 print(f"[ASR] DEVICE={DEVICE} COMPUTE={COMPUTE}")
 
 # Load Whisper models once (global singletons)
-_en = WhisperModel(EN_DIR, device=DEVICE, compute_type=COMPUTE)
-_tl = WhisperModel(TL_DIR, device=DEVICE, compute_type=COMPUTE)
+_en = WhisperModel(
+    EN_DIR,
+    device=DEVICE,
+    compute_type=COMPUTE,
+    local_files_only=True
+)
+
+_tl = WhisperModel(
+    TL_DIR,
+    device=DEVICE,
+    compute_type=COMPUTE,
+    local_files_only=True
+)
 
 # -------------------------------------------------------------------
 # Audio helpers (from old asr_routes.py)
