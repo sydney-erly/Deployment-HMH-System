@@ -339,12 +339,11 @@ function drawLineChart(pdf, x, y, w, h, data, opts = {}) {
 }
 
 
-/* ========================= BAR CHART ========================= */
+/* ========================= HORIZONTAL BAR CHART ========================= */
 function drawBarChart(pdf, x, y, w, h, data, opts = {}) {
   const arr = Array.isArray(data) ? data : [];
   const vals = arr.map(d => getNum(d, opts.valueKey));
   const hasData = vals.some(v => v > 0);
-
 
   // Card
   pdf.setFillColor(255, 255, 255);
@@ -352,14 +351,12 @@ function drawBarChart(pdf, x, y, w, h, data, opts = {}) {
   pdf.setDrawColor(...COLORS.border);
   pdf.roundedRect(x, y, w, h, 2, 2, "S");
 
-
   // Title
   if (opts.title) {
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(10);
     pdf.text(opts.title, x + 4, y + 7);
   }
-
 
   if (!hasData) {
     pdf.setFont("helvetica", "italic");
@@ -370,67 +367,86 @@ function drawBarChart(pdf, x, y, w, h, data, opts = {}) {
     return;
   }
 
-
-  // Chart area (extra left padding for Y-axis labels)
-  const padLeft = 18;
+  // Chart area - more left padding for labels
+  const padLeft = 28;
   const padRight = 10;
+  const padTop = 14;
+  const padBottom = 14;
   const chartX = x + padLeft;
-  const chartY = y + 18;
+  const chartY = y + padTop;
   const chartW = w - padLeft - padRight;
-  const chartH = h - 32;
-
+  const chartH = h - padTop - padBottom;
 
   let { min, max } = niceRange(vals, 100);
   min = Math.max(0, min);
-  // snap max to a clean step (25s) for nicer ticks; cap to 100 when looks like % data
+  
+  // Snap max to clean values
   const looksPercent = max <= 110;
-  const step = looksPercent ? 25 : Math.max(5, Math.round((max - min) / 4));
-  max = looksPercent ? 100 : Math.ceil(max / step) * step;
+  max = looksPercent ? 100 : Math.ceil(max / 10) * 10;
 
-
-  // Grid + Y labels
+  // Grid lines (vertical for horizontal bars)
   pdf.setDrawColor(...COLORS.gridLine);
   pdf.setLineWidth(0.3);
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(8);
-  pdf.setTextColor(...COLORS.textLight);
-
-
+  
   for (let i = 0; i <= 4; i++) {
-    const gy = chartY + chartH - (i * chartH / 4);
-    pdf.line(chartX, gy, chartX + chartW, gy);
-    const label = Math.round(min + (i * (max - min) / 4));
-    pdf.text(String(label), chartX - 4, gy + 2, { align: "right" });
+    const gx = chartX + (i * chartW / 4);
+    pdf.line(gx, chartY, gx, chartY + chartH);
   }
-  pdf.setTextColor(0, 0, 0);
 
-
-  // Bars
-  const barGap = 4;
-  const barW = Math.max(4, chartW / Math.max(1, arr.length) - barGap);
-
-
-  const [r, g, b] = (opts.color ?? COLORS.secondary);
-  pdf.setFillColor(r, g, b);
-  arr.forEach((d, i) => {
-    const v = getNum(d, opts.valueKey);
-    if (v <= 0) return;
-    const bx = chartX + i * (barW + barGap);
-    const bh = norm(clamp(v, min, max), 0, max) * chartH;
-    pdf.roundedRect(bx, chartY + chartH - bh, barW, bh, 1, 1, "F");
-  });
-
-
-  // X labels
+  // X-axis labels (bottom)
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(7);
   pdf.setTextColor(...COLORS.textLight);
+  
+  for (let i = 0; i <= 4; i++) {
+    const gx = chartX + (i * chartW / 4);
+    const label = Math.round(min + (i * (max - min) / 4));
+    pdf.text(String(label), gx, y + h - 4, { align: "center" });
+  }
+
+  // Calculate bar dimensions
+  const barGap = 1.5;
+  const availableHeight = chartH - 2; // Small top/bottom margin
+  const barH = Math.min(6, (availableHeight - (arr.length - 1) * barGap) / arr.length);
+
   const labelKey = opts.labelKey ?? "label";
+  const maxChars = opts.maxLabelChars ?? 10;
+
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(7);
+
   arr.forEach((d, i) => {
-    const label = String(d?.[labelKey] ?? d?.emotion ?? "").slice(0, 10);
-    const lx = chartX + i * (barW + barGap) + barW / 2;
-    pdf.text(label, lx, chartY + chartH + 7, { align: "center" });
+    const v = getNum(d, opts.valueKey);
+    const raw = String(d?.[labelKey] ?? d?.emotion ?? "");
+    const label = raw.slice(0, maxChars);
+
+    // Calculate bar position
+    const by = chartY + 1 + i * (barH + barGap);
+    const bw = norm(clamp(v, min, max), 0, max) * chartW;
+
+    // Draw horizontal bar - set color for each bar
+    if (v > 0) {
+      const [r, g, b] = (opts.color ?? COLORS.secondary);
+      pdf.setFillColor(r, g, b);
+      pdf.roundedRect(chartX, by, bw, barH, 1, 1, "F");
+    }
+
+    // Label on the left
+    pdf.setTextColor(...COLORS.textLight);
+    pdf.text(label, chartX - 3, by + barH / 2 + 1, { align: "right" });
+
+    // Value at the end of bar (or slightly after)
+    if (v > 0) {
+      pdf.setTextColor(0, 0, 0);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(7);
+      const valueX = chartX + bw + 2;
+      pdf.text(String(Math.round(v)), valueX, by + barH / 2 + 1);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(7);
+    }
   });
+
   pdf.setTextColor(0, 0, 0);
 }
 
@@ -656,11 +672,15 @@ export async function generateStudentReportPdf({ student, progress, recommendati
   y = drawSectionTitle(pdf, y, "Detailed Performance");
 
 
-  drawBarChart(pdf, PAGE.margin, y, chartW, chartH, progress?.letter_accuracy ?? [], {
+  // Show only the first 8 bars + labels
+  const limitedLetterAcc = (progress?.letter_accuracy ?? []).slice(0, 8);
+
+  drawBarChart(pdf, PAGE.margin, y, chartW, chartH, limitedLetterAcc, {
     title: "Letter/Word Accuracy",
     valueKey: "acc",
     labelKey: "label",
-    color: COLORS.secondary
+    color: COLORS.secondary,
+    maxLabelChars: 10
   });
 
 
@@ -695,10 +715,3 @@ export async function generateStudentReportPdf({ student, progress, recommendati
 
 
 export default generateStudentReportPdf;
-
-
-
-
-
-
-
