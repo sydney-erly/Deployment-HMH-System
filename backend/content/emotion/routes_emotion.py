@@ -203,7 +203,7 @@ def analyze_emotion():
     # Thresholds (VERY lenient)
     # -----------------------------------------------------------------
     emotion_thresholds = {
-        "angry": 0.25,
+        "angry": 0.15,
         "sad": 0.25,
         "happy": 0.15,
         "surprised": 0.15,

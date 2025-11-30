@@ -472,14 +472,29 @@ def student_dashboard():
         )
 
         # Decide chapter mode
-        if is_future and chapter_has_access:
-            mode = "review"     # previously hard-locked; now opened by real progress
+
+  
+
+        # NEW: consider backend chapter unlocks
+        real_chapter_unlocked = any(
+            (
+                prog.get((L.get("id") or L.get("lesson_id")), {})
+                .get("status") in ("unlocked", "completed")
+            )
+            for L in raw_lessons
+            if isinstance(L, dict)
+        )
+
+        # Determine default behavior
+        if is_future and (chapter_has_access or real_chapter_unlocked):
+            mode = "review"
         elif is_future:
             mode = "locked"
         elif is_focus:
             mode = "focus"
         else:
             mode = "review"
+
 
         lessons_out = []
         prev_completed = True  # for sequential gating inside focus chapters
