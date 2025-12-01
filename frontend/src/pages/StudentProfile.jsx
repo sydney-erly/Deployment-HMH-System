@@ -214,6 +214,38 @@ export default function StudentProfile() {
         <p className="text-sm opacity-70">
           {lang === "en" ? "Level" : "Antas"} {level}/30
         </p>
+
+        {/* Email Field */}
+        <div className="mt-3">
+          <label className="text-sm opacity-70 block mb-1">
+            {lang === "en" ? "Email" : "Email"}
+          </label>
+
+          <input
+            type="email"
+            defaultValue={student.email || ""}
+            placeholder={lang === "en" ? "Enter email..." : "Ilagay ang email..."}
+            className="w-full px-3 py-2 bg-[#0F1520] border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#FFC84A]"
+            onBlur={async (e) => {
+              const email = e.target.value.trim();
+              try {
+                const res = await apiFetch("/student/profile", {
+                  method: "PUT",
+                  token: auth.token(),
+                  body: { email },
+                });
+
+                setData((prev) => ({
+                  ...prev,
+                  student: { ...prev.student, email },
+                }));
+              } catch (err) {
+                console.error("Email update failed:", err);
+              }
+            }}
+          />
+        </div>
+
       </motion.div>
 
       {/* Stats Section */}

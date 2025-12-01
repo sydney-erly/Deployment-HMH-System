@@ -320,42 +320,33 @@ def update_profile():
     sb = supabase_client.client
     sid = request.user_id
 
-    if "photo" not in request.files:
-        return jsonify({"ok": False, "error": "No photo uploaded"}), 400
+    # Case 1: Photo upload (multipart/form)
+    if request.content_type and "multipart/form-data" in request.content_type:
+        photo = request.files.get("photo")
+        if not photo:
+            return jsonify({"error": "No photo uploaded"}), 400
+        
+        # Upload to Supabase
+        filename = f"{sid}/{secure_filename(photo.filename)}"
+        sb.storage.from_("hmh-images").upload(filename, photo, {"upsert": True})
+        public_url = sb.storage.from_("hmh-images").get_public_url(filename)
 
-    file = request.files["photo"]
-    if not file or not file.filename:
-        return jsonify({"ok": False, "error": "Empty file"}), 400
+        # Save to DB
+        sb.table("students").update({"photo_url": public_url}).eq("students_id", sid).execute()
 
-    filename = secure_filename(file.filename)
-    ext = os.path.splitext(filename)[1].lower() or ".jpg"
-    key = f"pfp/{sid}{ext}"  # store inside hmh-images/pfp/
-    content_type = file.mimetype or mimetypes.guess_type(filename)[0] or "image/jpeg"
+        return jsonify({"photo_url": public_url})
 
-    storage = sb.storage.from_("hmh-images")
+    # Case 2: JSON update (email, etc.)
+    data = request.get_json(silent=True) or {}
 
-    try:
-        bio = io.BytesIO(file.read())
-        photo_bytes = bio.getvalue()
+    updates = {}
+    if "email" in data:
+        updates["email"] = data["email"]
 
-        # Manually remove existing file before upload (simulate upsert)
-        try:
-            storage.remove([key])
-        except Exception:
-            pass
+    if updates:
+        sb.table("students").update(updates).eq("students_id", sid).execute()
 
-        storage.upload(key, photo_bytes, {"content-type": str(content_type)})
-    except Exception as e:
-        return jsonify({"ok": False, "error": f"Upload failed: {str(e)}"}), 500
-
-    pub_url = storage.get_public_url(key)
-
-    try:
-        sb.table("students").update({"photo_url": pub_url}).eq("students_id", sid).execute()
-    except Exception as e:
-        return jsonify({"ok": False, "error": f"DB update failed: {str(e)}"}), 500
-
-    return jsonify({"ok": True, "photo_url": pub_url})
+    return jsonify({"ok": True, "updated": updates})
 
 
 

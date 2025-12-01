@@ -376,12 +376,14 @@ def can_start_lesson(
 
 def recompute_lesson_completion(sb, sid, lesson_id):
     """
-    Recompute if a student completed a lesson.
-    A lesson is completed when EVERY activity in that lesson has best_score ≥ 60
-    for this student. We also store best_score as the average of those per-activity
-    bests (not the average of all attempts).
+    AUTO-COMPLETE:
+    A lesson is automatically completed when EVERY activity in the lesson
+    has a best score ≥ 60 — even if the student never reached the end screen.
+
+    This prevents lessons from getting stuck in 'in_progress'.
     """
-    # 1) fetch activities in lesson
+
+    # 1) fetch all activities for this lesson
     acts, err = sb_exec(
         sb.table("activities")
           .select("id")
@@ -394,7 +396,7 @@ def recompute_lesson_completion(sb, sid, lesson_id):
     if not act_ids:
         return False
 
-    # 2) fetch attempts for those activities
+    # 2) fetch all attempts for those activities
     atts, err = sb_exec(
         sb.table("activity_attempts")
           .select("activities_id, score")
@@ -404,28 +406,29 @@ def recompute_lesson_completion(sb, sid, lesson_id):
     if err:
         return False
 
-    # 3) compute best per activity
+    # 3) compute BEST score per activity
     best_by_activity = {}
     for a in atts or []:
         aid = a.get("activities_id")
         sc = float(a.get("score") or 0.0)
-        if aid is None:
-            continue
-        best_by_activity[aid] = max(best_by_activity.get(aid, 0.0), sc)
+        if aid:
+            best_by_activity[aid] = max(best_by_activity.get(aid, 0.0), sc)
 
-    # 4) must have a best for every activity and all ≥ 60
+    # 4) determine if lesson is passed
+    #    (must have a best score for EVERY activity, and all ≥ 60)
     if len(best_by_activity) != len(act_ids):
         passed = False
     else:
-        passed = all(best_by_activity.get(aid, 0.0) >= 60.0 for aid in act_ids)
+        passed = all(score >= 60.0 for score in best_by_activity.values())
 
-    # 5) compute display best_score as avg of bests (or 0 if none)
-    if best_by_activity:
-        avg_best = sum(best_by_activity.values()) / len(act_ids)
-    else:
-        avg_best = 0.0
+    # 5) compute average best score
+    avg_best = (
+        sum(best_by_activity.values()) / len(act_ids)
+        if best_by_activity
+        else 0.0
+    )
 
-    # 6) upsert lesson_progress
+    # 6) upsert lesson_progress with auto-complete
     payload = {
         "students_id": sid,
         "lesson_id": lesson_id,
@@ -436,6 +439,7 @@ def recompute_lesson_completion(sb, sid, lesson_id):
     if passed:
         payload["completed_at"] = datetime.now(timezone.utc).isoformat()
 
+    # check existing record
     existing, _ = sb_exec(
         sb.table("lesson_progress")
           .select("id")

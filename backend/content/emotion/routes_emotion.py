@@ -36,16 +36,12 @@ _FACE_CASCADE = cv2.CascadeClassifier(
 
 
 # -----------------------------------------------------------
-# Emotion Analyzer (UPGRADED FOR ADULTS + CHILDREN)
+# Emotion Analyzer (FINAL FIXED VERSION)
 # -----------------------------------------------------------
 def _analyze_image(image_bytes: bytes, expected_norm: str):
     """
-    Universal heuristic emotion detector.
-    Works reliably on adults & children using:
-    - region contrast
-    - variance
-    - eye brightness
-    - mouth aperture
+    Stable universal heuristic emotion detection for adults & children.
+    Uses priority-based logic to prevent emotion overlap.
     """
 
     start = time.time()
@@ -65,7 +61,7 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
         latency_ms = int((time.time() - start) * 1000)
         return "neutral", 0.3, {"neutral": 0.3}, latency_ms
 
-    # Pick the largest face
+    # Pick largest face
     faces = sorted(faces, key=lambda box: box[2] * box[3], reverse=True)
     (x, y, w, h) = faces[0]
 
@@ -87,59 +83,62 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
     eye_dark    = overall_mean - eye_mean
     eye_bright  = eye_mean - overall_mean
 
+    # PRIORITY FLAG
+    mouth_open = mouth_std > 10  # open mouth = surprised/happy
+
     scores = {}
 
     # =====================================================
     # HAPPY
     # =====================================================
-    if mouth_mean > overall_mean + 4 or mouth_std > 12:
-        scores["happy"] = max(scores.get("happy", 0), 0.5)
-
-    if mouth_mean > overall_mean + 8 and mouth_std > 18:
-        scores["happy"] = max(scores.get("happy", 0), 0.75)
-
-    if eye_bright > 2 and mouth_std > 8:
+    if mouth_mean > overall_mean + 5 or mouth_std > 15:
         scores["happy"] = max(scores.get("happy", 0), 0.6)
 
-    # =====================================================
-    # SAD
-    # =====================================================
-    if mouth_dark > 4 and mouth_std < 8:
-        scores["sad"] = max(scores.get("sad", 0), 0.55)
+    if mouth_mean > overall_mean + 10:
+        scores["happy"] = max(scores.get("happy", 0), 0.8)
 
-    if mouth_dark > 8:
-        scores["sad"] = max(scores.get("sad", 0), 0.75)
-
-    if eye_dark > 6:
-        scores["sad"] = max(scores.get("sad", 0), 0.6)
 
     # =====================================================
-    # ANGRY
+    # ANGRY — ONLY IF MOUTH IS CLOSED
     # =====================================================
-    if eye_dark > 6 and eye_std > 10:
-        scores["angry"] = max(scores.get("angry", 0), 0.6)
+    if not mouth_open:
+        if eye_dark > 7 and eye_std > 12:
+            scores["angry"] = max(scores.get("angry", 0), 0.6)
 
-    if eye_dark > 10 and eye_std > 15:
-        scores["angry"] = max(scores.get("angry", 0), 0.8)
+        if eye_dark > 12 and eye_std > 15:
+            scores["angry"] = max(scores.get("angry", 0), 0.85)
 
-    if mouth_std < 6 and eye_dark > 5:
-        scores["angry"] = max(scores.get("angry", 0), 0.55)
 
     # =====================================================
-    # SURPRISED
+    # SAD — ONLY IF MOUTH IS CLOSED
     # =====================================================
-    if mouth_dark > 5 and mouth_std > 12:
-        scores["surprised"] = max(scores.get("surprised", 0), 0.6)
+    if not mouth_open:
+        if mouth_dark > 6 and mouth_std < 8:
+            scores["sad"] = max(scores.get("sad", 0), 0.55)
 
-    if mouth_dark > 10 and mouth_std > 20:
-        scores["surprised"] = max(scores.get("surprised", 0), 0.8)
+        if eye_dark > 6:
+            scores["sad"] = max(scores.get("sad", 0), 0.6)
 
-    if eye_bright > 3 and mouth_std > 8:
-        scores["surprised"] = max(scores.get("surprised", 0), 0.65)
 
-    # Adult/kid-friendly leniency
-    if expected_norm == "surprised" and (mouth_std > 10 or mouth_dark > 5):
-        scores["surprised"] = max(scores.get("surprised", 0), 0.7)
+    # =====================================================
+    # SURPRISED — ONLY IF MOUTH IS OPEN
+    # =====================================================
+    if mouth_open:
+        # classic surprise
+        if mouth_dark > 5 and mouth_std > 12:
+            scores["surprised"] = max(scores.get("surprised", 0), 0.65)
+
+        if mouth_dark > 10 and mouth_std > 20:
+            scores["surprised"] = max(scores.get("surprised", 0), 0.85)
+
+        # eye widening
+        if eye_bright > 2:
+            scores["surprised"] = max(scores.get("surprised", 0), 0.7)
+
+        # expected → extra lenient
+        if expected_norm == "surprised":
+            scores["surprised"] = max(scores.get("surprised", 0), 0.75)
+
 
     # =====================================================
     # NEUTRAL
@@ -149,7 +148,7 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
     elif all(v < 0.5 for v in scores.values()):
         scores["neutral"] = max(scores.get("neutral", 0), 0.5)
 
-    # Choose label
+    # Best label
     label = max(scores, key=scores.get)
     confidence = float(scores[label])
     latency_ms = int((time.time() - start) * 1000)
@@ -232,7 +231,7 @@ def analyze_emotion():
     )
     expected_norm = _norm(exp_raw)
 
-    # Analyze image with new universal detector
+    # Analyze
     try:
         label, confidence, scores, latency_ms = _analyze_image(raw, expected_norm)
     except Exception as e:
@@ -253,7 +252,6 @@ def analyze_emotion():
     }
     threshold = thresholds.get(expected_norm, 0.15)
 
-    # pass/fail
     passed = (label_norm == expected_norm and confidence >= threshold)
 
     # soft pass
@@ -263,7 +261,6 @@ def analyze_emotion():
     score = 100.0 if passed else 0.0
     attempt_id = None
 
-    # Save only when passed
     if passed:
         try:
             ins = sb.table("activity_attempts").insert({
@@ -291,7 +288,7 @@ def analyze_emotion():
                 "detected_emotion": label_norm,
                 "expected_emotion": expected_norm,
                 "confidence": round(confidence, 3),
-                "model_backend": "opencv-heuristic-v2",
+                "model_backend": "opencv-heuristic-v3",
                 "latency_ms": latency_ms,
             }).execute()
 
@@ -311,7 +308,6 @@ def analyze_emotion():
         "next_activity": next_act,
         "auto": auto_flag,
     })
-
 
 
 # -----------------------------------------------------------
