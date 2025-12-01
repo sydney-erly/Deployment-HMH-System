@@ -307,53 +307,81 @@ def get_profile():
     })
 
 
-    
-
 @student_bp.put("/profile")
 @require_student
 def update_profile():
     sb = supabase_client.client
     sid = request.user_id
 
-    # Case 1: Photo upload (multipart/form)
-    if request.content_type and "multipart/form-data" in request.content_type:
+    # ------------------------------------------
+    # CASE 1 — PHOTO UPLOAD (multipart/form-data)
+    # ------------------------------------------
+    if request.content_type and "multipart/form-data" in request.content_type.lower():
         photo = request.files.get("photo")
         if not photo:
             return jsonify({"error": "No photo uploaded"}), 400
-        
-        # Upload to Supabase
-        filename = f"{sid}/{secure_filename(photo.filename)}"
 
-        # Read binary content
+        # Save binary
+        filename = f"{sid}/{secure_filename(photo.filename)}"
         file_bytes = photo.read()
 
-        # Upload properly
-        upload_res = sb.storage.from_("hmh-images").upload(
-            path=filename,
-            file=file_bytes,
-            file_options={"content_type": photo.mimetype, "upsert": True},
-        )
+        try:
+            # This is the WORKING upload for supabase-py
+            sb.storage.from_("hmh-images").upload(
+                path=filename,
+                file=file_bytes,
+                file_options={"upsert": True, "content_type": photo.mimetype}
+            )
+        except Exception as e:
+            print("UPLOAD ERROR:", e)
+            return jsonify({"error": "Upload failed", "details": str(e)}), 500
 
-        # Generate public URL
         public_url = sb.storage.from_("hmh-images").get_public_url(filename)
 
-
-        # Save to DB
-        sb.table("students").update({"photo_url": public_url}).eq("students_id", sid).execute()
+        # Update DB
+        sb.table("students") \
+          .update({"photo_url": public_url}) \
+          .eq("students_id", sid) \
+          .execute()
 
         return jsonify({"photo_url": public_url})
 
-    # Case 2: JSON update (email, etc.)
+    # ------------------------------------------
+    # CASE 2 — JSON UPDATE (email, etc.)
+    # ------------------------------------------
     data = request.get_json(silent=True) or {}
-
     updates = {}
+
     if "email" in data:
         updates["email"] = data["email"]
 
     if updates:
-        sb.table("students").update(updates).eq("students_id", sid).execute()
+        sb.table("students") \
+          .update(updates) \
+          .eq("students_id", sid) \
+          .execute()
 
     return jsonify({"ok": True, "updated": updates})
+
+@student_bp.put("/profile/email")
+@require_student
+def update_email():
+    sb = supabase_client.client
+    sid = request.user_id
+
+    data = request.get_json(silent=True) or {}
+    email = data.get("email")
+
+    if not email:
+        return jsonify({"error": "Missing email"}), 400
+
+    sb.table("students") \
+        .update({"email": email}) \
+        .eq("students_id", sid) \
+        .execute()
+
+    return jsonify({"ok": True, "email": email})
+
 
 
 

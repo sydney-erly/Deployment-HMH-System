@@ -63,6 +63,26 @@ export default function StudentProfile() {
     }
   }
 
+  async function handleEmailBlur(e) {
+    const email = e.target.value.trim();
+    if (!email) return;
+
+    try {
+      await apiFetch("/student/profile/email", {
+        method: "PUT",
+        token: auth.token(),
+        body: { email },
+      });
+
+      setData((prev) => ({
+        ...prev,
+        student: { ...prev.student, email },
+      }));
+    } catch (err) {
+      console.error("Email update failed:", err);
+    }
+  }
+
   if (!data) {
     return (
       <LoadingScreen
@@ -80,6 +100,7 @@ export default function StudentProfile() {
 
   const totalLessons = 30;
   const level = Math.min(stats.lessonsCompleted, totalLessons);
+
   const birth = student.birthday ? new Date(student.birthday) : null;
   const age = birth ? new Date().getFullYear() - birth.getFullYear() : "-";
 
@@ -176,7 +197,7 @@ export default function StudentProfile() {
         draggable="false"
       />
 
-      {/* Profile Header */}
+      {/* Profile Card */}
       <motion.div
         className="bg-[#161B22] rounded-2xl p-6 w-full max-w-md text-center shadow-lg"
         initial={{ opacity: 0, y: 20 }}
@@ -217,7 +238,7 @@ export default function StudentProfile() {
         </p>
       </motion.div>
 
-      {/* Email block (separate card) */}
+      {/* Email Block */}
       <div className="bg-[#161B22] rounded-2xl p-4 w-full max-w-md mt-4">
         <label className="text-sm opacity-70 block mb-1">
           {lang === "en" ? "Email" : "Email"}
@@ -228,51 +249,35 @@ export default function StudentProfile() {
           defaultValue={student.email || ""}
           placeholder={lang === "en" ? "Enter email..." : "Ilagay ang email..."}
           className="w-full px-3 py-2 bg-[#0F1520] border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#FFC84A]"
-          onBlur={async (e) => {
-            const email = e.target.value.trim();
-            try {
-              await apiFetch("/student/profile", {
-                method: "PUT",
-                token: auth.token(),
-                body: { email },
-              });
-
-              setData((prev) => ({
-                ...prev,
-                student: { ...prev.student, email },
-              }));
-            } catch (err) {
-              console.error("Email update failed:", err);
-            }
-          }}
+          onBlur={handleEmailBlur}
         />
       </div>
 
-      {/* Stats Section */}
+      {/* Stats */}
       <div className="w-full max-w-md mt-8">
         <h3 className="font-bold text-lg mb-3">
           {lang === "en" ? "Statistics" : "Pag-uulat"}
         </h3>
 
         <div className="grid grid-cols-3 gap-3">
-          <div className="bg-[#161B22] rounded-xl p-3 flex flex-col items-center justify-center text-center">
-            <img src={streakImg} alt="streak" className="w-10 h-10 mb-2" />
+          <div className="bg-[#161B22] rounded-xl p-3 flex flex-col items-center text-center">
+            <img src={streakImg} className="w-10 h-10 mb-2" />
             <p className="text-sm text-gray-400">
               {lang === "en" ? "Day Streak" : "Tuloy-tuloy na Araw"}
             </p>
             <p className="text-lg font-bold">{stats.streakDays || 0}</p>
           </div>
 
-          <div className="bg-[#161B22] rounded-xl p-3 flex flex-col items-center justify-center text-center">
-            <img src={lessonImg} alt="lessons" className="w-10 h-10 mb-2" />
+          <div className="bg-[#161B22] rounded-xl p-3 flex flex-col items-center text-center">
+            <img src={lessonImg} className="w-10 h-10 mb-2" />
             <p className="text-sm text-gray-400">
               {lang === "en" ? "Lessons Done" : "Natapos na Aralin"}
             </p>
             <p className="text-lg font-bold">{stats.lessonsCompleted || 0}</p>
           </div>
 
-          <div className="bg-[#161B22] rounded-xl p-3 flex flex-col items-center justify-center text-center">
-            <img src={progressImg} alt="progress" className="w-10 h-10 mb-2" />
+          <div className="bg-[#161B22] rounded-xl p-3 flex flex-col items-center text-center">
+            <img src={progressImg} className="w-10 h-10 mb-2" />
             <p className="text-sm text-gray-400">
               {lang === "en" ? "Progress" : "Progreso"}
             </p>
@@ -295,9 +300,9 @@ export default function StudentProfile() {
                 key={a.id}
                 className="bg-[#161B22] rounded-xl p-4 shadow-md flex items-center gap-3"
               >
-                <img src={icon} alt={a.name} className="w-10 h-10" />
+                <img src={icon} className="w-10 h-10" />
                 <div className="flex-1">
-                  <div className="flex justify-between items-center mb-1">
+                  <div className="flex justify-between mb-1">
                     <p className="font-semibold">{a.name}</p>
                     <p className="text-sm text-gray-400">
                       {a.progress}/{a.goal}
