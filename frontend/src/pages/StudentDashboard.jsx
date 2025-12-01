@@ -26,29 +26,39 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true);
   const [showSelector, setShowSelector] = useState(false);
   const [photoPulse, setPhotoPulse] = useState(false);
+  const [profileStats, setProfileStats] = useState(null);
 
   const lang = (localStorage.getItem("hmh_lang") || "en").toLowerCase();
 
   // Load dashboard data
-  useEffect(() => {
-    async function load() {
-      try {
-        const res = await apiFetch(`/student/student-dashboard?lang=${lang}`, {
-          token: auth.token(),
-        });
-        setData(res);
+useEffect(() => {
+  async function load() {
+    try {
+      // Load dashboard UI
+      const res = await apiFetch(`/student/student-dashboard?lang=${lang}`, {
+        token: auth.token(),
+      });
 
-        const focus = res?.chapters?.find((ch) => ch.mode === "focus");
-        if (focus) setSelectedChapter(focus);
-      } catch (e) {
-        console.error("Dashboard fetch failed:", e);
-        nav("/login");
-      } finally {
-        setLoading(false);
-      }
+      // Load profile stats (streak + lessons)
+      const profile = await apiFetch(`/student/profile`, {
+        token: auth.token(),
+      });
+
+      setData(res);
+      setProfileStats(profile.stats);
+
+      const focus = res?.chapters?.find((ch) => ch.mode === "focus");
+      if (focus) setSelectedChapter(focus);
+    } catch (e) {
+      console.error("Dashboard fetch failed:", e);
+      nav("/login");
+    } finally {
+      setLoading(false);
     }
-    load();
-  }, [nav, lang]);
+  }
+  load();
+}, [nav, lang]);
+
 
   // Listen for profile photo updates from StudentProfile
   useEffect(() => {
@@ -183,16 +193,17 @@ export default function StudentDashboard() {
         )}
 
     {/* Right: Stats */}
-    <div className="flex flex-col sm:flex-row items-end sm:items-center gap-0.5 sm:gap-5 text-hmhRed font-extrabold text-base sm:text-lg md:text-xl mr-1 sm:mr-0">
-      <div className="flex items-center gap-1 drop-shadow-[1px_1px_1px_rgba(0,0,0,0.15)]">
-        <span className="text-xl sm:text-2xl md:text-3xl">🔥</span>
-        <span>{data?.stats?.streakDays || 0}</span>
-      </div>
-      <div className="flex items-center gap-1 drop-shadow-[1px_1px_1px_rgba(0,0,0,0.15)]">
-        <span className="text-xl sm:text-2xl md:text-3xl">⭐</span>
-        <span>{data?.stats?.lessonsCompleted ||0}</span>
-      </div>
-    </div>
+<div className="flex flex-col sm:flex-row items-end sm:items-center gap-0.5 sm:gap-5 text-hmhRed font-extrabold text-base sm:text-lg md:text-xl mr-1 sm:mr-0">
+  <div className="flex items-center gap-1 drop-shadow-[1px_1px_1px_rgba(0,0,0,0.15)]">
+    <span className="text-xl sm:text-2xl md:text-3xl">🔥</span>
+    <span>{profileStats?.streakDays || 0}</span>
+  </div>
+  <div className="flex items-center gap-1 drop-shadow-[1px_1px_1px_rgba(0,0,0,0.15)]">
+    <span className="text-xl sm:text-2xl md:text-3xl">⭐</span>
+    <span>{profileStats?.lessonsCompleted || 0}</span>
+  </div>
+</div>
+
       </header>
 
       {/* --- Chapter View --- */}

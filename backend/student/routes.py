@@ -594,8 +594,6 @@ def student_dashboard():
                         status = "unlocked" if prev_completed else "locked"
                         prev_completed = (real == "completed")
 
-
-
             lessons_out.append({
                 "id": int(lid),
                 "code": L.get("code"),
