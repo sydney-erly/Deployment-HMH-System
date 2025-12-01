@@ -301,74 +301,55 @@ def decorate_dashboard_payload(
 # Lesson gating — used by /lesson/<id>/activities
 # --------------------------------------------------------------------
 
-def can_start_lesson(
-    students_id: str,
-    level: str,
-    lesson: Dict[str, Any],
-    per_chapter_lessons: Dict[int, List[Dict[str, Any]]]
-) -> bool:
+def can_start_lesson(students_id, level, lesson, per_chapter_lessons):
     """
-    Enforce:
-      - Review chapters (outside focus): all lessons allowed
-      - Focus chapters:
-          · Lesson 1 always allowed
-          · Lessons 2..N require previous lesson completed
-      - Second focus chapter locked until first focus chapter's first 5 lessons completed
+    NEW RULE:
+    - Assigned chapters (focus_set) still determine FOCUS styling.
+    - BUT sequential unlocking ALWAYS overrides speech-level gating.
+    - If a lesson is unlocked or completed in lesson_progress → allow it.
     """
-    lv = _normalize_level(level)
-    ch_id = (lesson or {}).get("chapter_id")
-    lsort = (lesson or {}).get("sort_order") or 999
-    lid   = (lesson or {}).get("id")
 
-    if not ch_id:
-        return False  # malformed payload
+    from extensions import supabase_client
+    sb = supabase_client.client
 
-    # Lesson 1 anywhere → always allowed
-    if int(lsort) == 1:
-        return True
-
-    # Determine the chapter number for this lesson
-    try:
-        ch_no = chapter_number(int(ch_id))
-    except Exception:
-        ch_no = None
-
-    focus = _focus_set(lv)
-
-    # REVIEW chapters (not in focus set) → allow everything
-    if ch_no not in focus:
-        return True
-
-    # FOCUS chapters: sequential requirement
-    lessons_in_ch = sorted(
-        per_chapter_lessons.get(int(ch_id), []) or [],
-        key=lambda x: (x.get("sort_order") or 9999)
+    # Load lesson_progress
+    prog_rows, _ = sb_exec(
+        sb.table("lesson_progress")
+          .select("lesson_id,status,best_score")
+          .eq("students_id", students_id)
     )
+    prog = {int(r["lesson_id"]): r for r in (prog_rows or [])}
 
-    # Previous lesson in same chapter must be completed
-    prev = next((x for x in lessons_in_ch if (x.get("sort_order") == (int(lsort) - 1))), None)
-    if prev and prev.get("id") and (prev.get("id") != lid):
-        prog = _progress_map(students_id)
-        if not _has_completed(prog, int(prev["id"])):
-            return False
+    lid = lesson.get("id")
+    ch_id = lesson.get("chapter_id")
+    lsort = lesson.get("sort_order", 1)
 
-        # If this is the 2nd focus chapter, ensure first focus chapter's first 5 lessons completed
-        if ch_no == max(focus):
-            first_focus_no = min(focus)
-            # Find the first focus chapter id
-            first_focus_ch_id = None
-            for k in per_chapter_lessons.keys():
-                try:
-                    if chapter_number(int(k)) == first_focus_no:
-                        first_focus_ch_id = int(k)
-                        break
-                except Exception:
-                    continue
-            if first_focus_ch_id is not None:
-                if not _chapter_complete_first5(prog, per_chapter_lessons.get(first_focus_ch_id, [])):
-                    return False
+    # 1. Immediate override:
+    # If lesson already unlocked or completed → allow always
+    if lid in prog:
+        r = prog[lid]
+        st = (r.get("status") or "").lower()
+        if st in ("unlocked", "in_progress", "completed") or (r.get("best_score") or 0) >= 60:
+            return True
 
-    return True
+    # 2. Sequential unlocking inside the chapter (fallback)
+    lessons = sorted(per_chapter_lessons.get(ch_id, []), key=lambda x: (x.get("sort_order") or 999))
+
+    # Lesson 1 ALWAYS allowed
+    if lsort == 1:
+        return True
+
+    # Check if previous lesson is completed
+    prev = next((x for x in lessons if x.get("sort_order") == lsort - 1), None)
+    if prev:
+        prev_id = prev.get("id")
+        p = prog.get(prev_id)
+        if p and ((p.get("status") == "completed") or (p.get("best_score") or 0) >= 60):
+            return True
+
+    # Default deny
+    return False
+
 
 # --------------------------------------------------------------------
 # Completion recompute — keeps lesson_progress in sync

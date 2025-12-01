@@ -523,16 +523,24 @@ def student_dashboard():
             if isinstance(L, dict)
         )
 
-        # Determine default behavior
+ 
         # NEW RULE:
-        # Chapters are focus/review by speech level, BUT
-        # if ANY lesson is unlocked, chapter must be open (not locked).
+        # 1. Speech-level focus chapters still appear as focus.
+        # 2. Review chapters appear normally.
+        # 3. Future chapters are normally locked…
+        # 4. BUT if ANY lesson is unlocked/completed, override to open.
+
         if chapter_has_access or real_chapter_unlocked:
+            # Chapter has real progress → force open.
             mode = "focus" if is_focus else "review"
         else:
-            # Only lock if never unlocked before
-            mode = "locked" if is_future else ("focus" if is_focus else "review")
-
+            # No progress → apply assigned chapter gating
+            if is_focus:
+                mode = "focus"
+            elif is_future:
+                mode = "locked"
+            else:
+                mode = "review"
 
 
         lessons_out = []
