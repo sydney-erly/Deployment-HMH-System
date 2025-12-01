@@ -335,7 +335,8 @@ def update_profile():
                 },
             )
         except Exception as e:
-            print("UPLOAD ERROR:", repr(e))
+            print("UPLOAD ERROR FULL:", repr(e))
+
             return jsonify({"error": "Upload failed", "details": str(e)}), 500
 
 
