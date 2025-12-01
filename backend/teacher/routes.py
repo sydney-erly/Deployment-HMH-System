@@ -1,5 +1,7 @@
 # backend/teacher/routes.py
-#updated 11/20/2025 04:28PM
+# updated 12/01/2025 08:01PM
+
+
 
 
 # from backend.utils.defaults import assign_default_photo_path
@@ -10,12 +12,18 @@ import re
 from collections import defaultdict
 
 
+
+
 from auth.jwt_utils import require_teacher
 from extensions import supabase_client
 from utils.sb import sb_exec
 
 
+
+
 teacher_bp = Blueprint("teacher", __name__)
+
+
 
 
 # ---------- Uniform JSON error handler ----------
@@ -25,14 +33,20 @@ def _teacher_json_errors(ex):
     return jsonify({"error": "Internal Server Error", "detail": str(ex)}), 500
 
 
+
+
 # ---------- Utility ----------
 def now_ph():
     return datetime.now(timezone(timedelta(hours=8)))
 
 
+
+
 def today_start_utc():
     ph = now_ph().replace(hour=0, minute=0, second=0, microsecond=0)
     return ph.astimezone(timezone.utc)
+
+
 
 
 def greet_ph():
@@ -44,6 +58,8 @@ def greet_ph():
     return "Good evening"
 
 
+
+
 # Safe select helper
 def sb_safe_select(q):
     rows, err = sb_exec(q)
@@ -53,14 +69,20 @@ def sb_safe_select(q):
     return rows or []
 
 
+
+
 # Retry wrapper for transient hiccups (net/RLS/signed URLs)
 import time
+
+
 
 
 def make_initials(first, last):
     f = (first or "").strip()[:1].upper()
     l = (last or "").strip()[:1].upper()
     return f + l if (f or l) else None
+
+
 
 
 def sb_try_rows(name, fn, retries=2, delay=0.2):
@@ -88,6 +110,10 @@ def sb_try_rows(name, fn, retries=2, delay=0.2):
 
 
 
+
+
+
+
 # ======================= Student payload sanitizers =======================
 ALLOWED_STUDENT_FIELDS = [
     # Required
@@ -101,6 +127,8 @@ ALLOWED_STUDENT_FIELDS = [
     "room_assignment",
     "schedule",
     "class_time",
+
+
 
 
     # Optional
@@ -117,6 +145,8 @@ ALLOWED_STUDENT_FIELDS = [
     "guardian_relationship",
 
 
+
+
     # System fields that can exist
     "photo_url",
     "record_status",
@@ -124,6 +154,8 @@ ALLOWED_STUDENT_FIELDS = [
     "level_confirmed_at",
     "graduated_at",
 ]
+
+
 
 
 REQUIRED_STUDENT_FIELDS = [
@@ -144,7 +176,15 @@ REQUIRED_STUDENT_FIELDS = [
 
 
 
+
+
+
+
+
+
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
 
 
 def _normalize_date_to_yyyy_mm_dd(value):
@@ -167,6 +207,8 @@ def _normalize_date_to_yyyy_mm_dd(value):
     return None
 
 
+
+
 def _sanitize_student_payload(data: dict, current: dict | None = None) -> dict:
     out = {}
     for k in ALLOWED_STUDENT_FIELDS:
@@ -181,14 +223,20 @@ def _sanitize_student_payload(data: dict, current: dict | None = None) -> dict:
             out[k] = v
 
 
+
+
     # normalize date
     if "birthday" in out:
         out["birthday"] = _normalize_date_to_yyyy_mm_dd(out.get("birthday"))
 
 
+
+
     # email sanity
     if out.get("email") and not EMAIL_RE.match(out["email"]):
         out["email"] = None
+
+
 
 
     # contact: keep only digits and leading +
@@ -197,11 +245,15 @@ def _sanitize_student_payload(data: dict, current: dict | None = None) -> dict:
         out["contact_number"] = digits or None
 
 
+
+
     # prevent NOT NULL violations
     current = current or {}
     for req in ("first_name", "last_name"):
         if (out.get(req) is None) and current.get(req):
             out[req] = current[req]
+
+
 
 
     # defaults if both new and current are empty
@@ -213,7 +265,11 @@ def _sanitize_student_payload(data: dict, current: dict | None = None) -> dict:
         out["sex"] = "Unspecified"
 
 
+
+
     return out
+
+
 
 
 def _diff_payload(old: dict, new: dict) -> dict:
@@ -225,6 +281,8 @@ def _diff_payload(old: dict, new: dict) -> dict:
             changed[k] = v
     return changed
 # ========================================================================
+
+
 
 
 # ======================= Photo URL resolver helpers ======================
@@ -242,7 +300,11 @@ def _resolve_photo_url(path_or_url: str | None, *, bucket="student-photos", expi
         return u
 
 
+
+
     sb = supabase_client.client
+
+
 
 
     # Try public URL first
@@ -255,6 +317,8 @@ def _resolve_photo_url(path_or_url: str | None, *, bucket="student-photos", expi
         print("get_public_url error:", ex)
 
 
+
+
     # Fall back to a signed URL
     try:
         sig = sb.storage.from_(bucket).create_signed_url(u, expires_sec)
@@ -262,6 +326,8 @@ def _resolve_photo_url(path_or_url: str | None, *, bucket="student-photos", expi
     except Exception as ex:
         print("create_signed_url error:", ex)
         return None
+
+
 
 
 def _inject_resolved_photo(row: dict | None, *, bucket="student-photos") -> dict | None:
@@ -274,11 +340,15 @@ def _inject_resolved_photo(row: dict | None, *, bucket="student-photos") -> dict
 # ========================================================================
 
 
+
+
 # ---------- Overview (fixed: never early-return, always compute inactive) ----------
 @teacher_bp.get("/overview")
 @require_teacher
 def overview():
     sb = supabase_client.client
+
+
 
 
     def safe_exec(name, fn):
@@ -291,6 +361,8 @@ def overview():
         except Exception as ex:
             print(f"[EXCEPTION] {name}:", ex)
             return []
+
+
 
 
     # --- Teacher (minimal columns); do not early-return on failure ---
@@ -310,6 +382,8 @@ def overview():
         teacher = None
 
 
+
+
     # Try to add teacher photo best-effort
     # Try to add teacher photo best-effort
     if teacher:
@@ -318,6 +392,7 @@ def overview():
             teacher.get("first_name"),
             teacher.get("last_name")
         )
+
 
         try:
             t_photo_row, tperr = sb_exec(
@@ -330,8 +405,12 @@ def overview():
                 teacher["photo_url"] = t_photo_row["photo_url"]
                 _inject_resolved_photo(teacher, bucket="hmh-images")
 
+
         except Exception as ex:
             print("Teacher photo fetch exception:", ex)
+
+
+
 
 
 
@@ -344,9 +423,11 @@ def overview():
     students_count = len(students_rows)
     sessions_today = len(sessions_rows)
 
+
     # ============================================================
     #   DAILY SCORE TRENDS (Python-only, accurate, zeros included)
     # ============================================================
+
 
     def _to_ph_day(date_like):
         if not date_like:
@@ -359,11 +440,13 @@ def overview():
             # Already YYYY-MM-DD
             return s.split("T")[0]
 
+
     def _normalize_and_sort(rows):
         bucket = {}
         for r in rows or []:
             raw_day = r.get("date") or r.get("day")
             ph_day = _to_ph_day(raw_day)
+
 
             # --- CRITICAL FIX: zero should NOT be skipped ---
             val = r.get("avg")
@@ -372,17 +455,21 @@ def overview():
             if val is None:
                 val = r.get("average_score")
 
+
             try:
                 val = float(val)
             except Exception:
                 continue
 
+
             if not ph_day:
                 continue
+
 
             agg = bucket.setdefault(ph_day, {"sum": 0.0, "n": 0})
             agg["sum"] += val
             agg["n"] += 1
+
 
         # Final averaged timeline
         series = [
@@ -392,8 +479,10 @@ def overview():
         series.sort(key=lambda x: x["date"])
         return series[-14:]  # last 14 real days
 
+
     # ---- ALWAYS use activity_attempts (ignore the broken RPC) ----
     since_utc = (now_ph() - timedelta(days=60)).astimezone(timezone.utc).isoformat()
+
 
     rows = sb_safe_select(
         sb.table("activity_attempts")
@@ -401,17 +490,24 @@ def overview():
           .gte("created_at", since_utc)
     )
 
+
     shaped = [
         {"date": r.get("created_at"), "score": r.get("score")}
         for r in rows
     ]
+
 
     line_series = _normalize_and_sort(shaped)
     avg_last = line_series[-1]["avg"] if line_series else 0.0
 
 
 
+
+
+
 #---------------------------------------------------------------------------------------------------------------------------
+
+
 
 
     # --- Diagnosis distribution ---
@@ -425,6 +521,8 @@ def overview():
             d = str(raw).strip().upper()
             diag_counts[d] = diag_counts.get(d, 0) + 1
     diagnosis_counts = [{"diagnosis": k, "count": v} for k, v in diag_counts.items()]
+
+
 
 
     # --- Recently active students ---
@@ -444,11 +542,15 @@ def overview():
             _inject_resolved_photo(st)
 
 
+
+
     # --- Inactive students (always compute) ---
     days = int(request.args.get("inactive_days", "7"))
     cutoff = now_ph() - timedelta(days=days)
     cutoff_utc = cutoff.astimezone(timezone.utc)
     last_rows = sb_try_rows("last_session_per_student", lambda: sb_exec(sb.rpc("last_session_per_student", {})))
+
+
 
 
     inactive = []
@@ -463,6 +565,8 @@ def overview():
             dt = None
         if (dt is None) or (dt < cutoff_utc):
             inactive.append(r)
+
+
 
 
     # Enrich inactive with student basics + resolved photo
@@ -482,6 +586,8 @@ def overview():
             student_map[str(s.get("students_id"))] = s
 
 
+
+
     for r in inactive:
         sid = str(r.get("students_id") or "")
         if sid and sid in student_map:
@@ -493,10 +599,13 @@ def overview():
         _inject_resolved_photo(r)  # adds photo_url_resolved if possible
 
 
+
+
         # ---------- Safe teacher name for greeting ----------
     if teacher:
         fname = (teacher.get("first_name") or "").strip()
         lname = (teacher.get("last_name") or "").strip()
+
 
         if fname:
             tname = f"Teacher {fname}"
@@ -506,6 +615,7 @@ def overview():
             tname = "Teacher"
     else:
         tname = "Teacher"
+
 
     # ---------- Final payload ----------
     payload = {
@@ -526,6 +636,9 @@ def overview():
 
 
 
+
+
+
 # ---------- Analytics (matches spec: split speech vs emotion; duration in engagement) ----------
 @teacher_bp.get("/analytics")
 @require_teacher
@@ -533,8 +646,12 @@ def analytics():
     sb = supabase_client.client
 
 
+
+
     DAYS_FOR_SESSIONS = 30
     DAYS_FOR_ATTEMPTS = 90
+
+
 
 
     def _parse_dt(s):
@@ -546,12 +663,16 @@ def analytics():
             return None
 
 
+
+
     try:
         # --- raw reads (SELECT-only; no schema changes) ---
         emo_rows = sb_safe_select(
             sb.table("emotion_metrics")
               .select("expected_emotion, detected_emotion, created_at")
         )
+
+
 
 
         since_sessions = (now_ph() - timedelta(days=DAYS_FOR_SESSIONS)).astimezone(timezone.utc).isoformat()
@@ -562,6 +683,8 @@ def analytics():
         )
 
 
+
+
         since_attempts = (now_ph() - timedelta(days=DAYS_FOR_ATTEMPTS)).astimezone(timezone.utc).isoformat()
         att_rows = sb_safe_select(
             sb.table("activity_attempts")
@@ -570,16 +693,22 @@ def analytics():
         )
 
 
+
+
         act_rows = sb_safe_select(
             sb.table("activities").select("id, lesson_id, type")
         )
         act_by_id = {int(r["id"]): r for r in act_rows if r.get("id") is not None}
 
 
+
+
         lesson_rows = sb_safe_select(
             sb.table("lessons").select("id, title_en")
         )
         lesson_title = {int(r["id"]): (r.get("title_en") or f"Lesson {r['id']}") for r in lesson_rows if r.get("id") is not None}
+
+
 
 
         # student names for engagement
@@ -599,6 +728,8 @@ def analytics():
                     stu_by_id[str(s["students_id"])] = full or "Student"
 
 
+
+
         # ============ 1) Emotion Recognition Distribution ============
         emo_stats = {}
         for r in emo_rows:
@@ -612,6 +743,8 @@ def analytics():
             {"emotion": k, "avg_match": round(100.0 * v["ok"] / max(v["n"], 1), 1)}
             for k, v in sorted(emo_stats.items())
         ]
+
+
 
 
         # ============ 2) Engagement Insights ============
@@ -633,6 +766,8 @@ def analytics():
                 rec["dur_sum"] += dur_min; rec["dur_n"] += 1
 
 
+
+
         engagement = []
         for sid, r in eng.items():
             engagement.append({
@@ -641,6 +776,8 @@ def analytics():
                 "avg_duration_min": round(r["dur_sum"]/max(r["dur_n"],1), 1) if r["dur_n"] else 0.0
             })
         engagement.sort(key=lambda x: (-x["session_count"], x["student"]))
+
+
 
 
         # ============ 3) Performance Trends (two series: speech vs emotion) ============
@@ -663,6 +800,8 @@ def analytics():
             agg["sum"] += float(sc); agg["n"] += 1
 
 
+
+
         # emotion from emotion_metrics as % correct per week
         emo_week = {}
         for r in emo_rows:
@@ -677,6 +816,8 @@ def analytics():
             agg["ok"] += ok; agg["n"] += 1
 
 
+
+
         keys = sorted(set(speech_week) | set(emo_week))
         performance_trends = []
         for k in keys:
@@ -687,6 +828,8 @@ def analytics():
                 "speech_avg": round(s["sum"]/max(s["n"],1), 1),
                 "emotion_match": round(100.0*e["ok"]/max(e["n"],1), 1)
             })
+
+
 
 
         # ============ 4) Mood vs Performance ============
@@ -703,6 +846,8 @@ def analytics():
             })
         for arr in sess_by_student.values():
             arr.sort(key=lambda x: x["start"])
+
+
 
 
         mood_sum = {}
@@ -724,6 +869,8 @@ def analytics():
             {"mood": k, "avg_accuracy": round(v["sum"]/max(v["n"],1), 1)}
             for k, v in sorted(mood_sum.items())
         ]
+
+
 
 
         # ============ 5) Lesson Difficulty ============
@@ -748,6 +895,8 @@ def analytics():
         lesson_difficulty.sort(key=lambda x: x["avg_accuracy"])  # harder first
 
 
+
+
         return jsonify({
             "emotion_distribution": emotion_distribution,
             "engagement": engagement,
@@ -757,6 +906,8 @@ def analytics():
         }), 200
 
 
+
+
     except Exception as ex:
         print("analytics compute error:", ex)
         return jsonify({"error": str(ex)}), 500
@@ -764,7 +915,12 @@ def analytics():
 
 
 
+
+
+
+
 # ---------- Teacher Profile ----------
+
 
 @teacher_bp.get("/profile")
 @require_teacher
@@ -782,18 +938,32 @@ def teacher_profile():
         if not row:
             return jsonify({"error": "Not found"}), 404
 
-        # Generate initials
-        row["initials"] = make_initials(row.get("first_name"), row.get("last_name"))
 
-        # Resolve their stored photo_url into a signed URL (if any)
-        _inject_resolved_photo(row, bucket="hmh-images")
+        # Generate initials for display only
+        initials = make_initials(row.get("first_name"), row.get("last_name"))
 
-        # Return full teacher object including the original photo_url
-        return jsonify(row), 200
+
+        # Clone row so initials are NOT part of the DB payload
+        safe = dict(row)
+        safe["initials"] = initials
+
+
+        # Resolve photo for frontend
+        _inject_resolved_photo(safe, bucket="hmh-images")
+
+
+        return jsonify(safe), 200
+
+
+
 
     except Exception as ex:
         print("teacher_profile error:", ex)
         return jsonify({"error": str(ex)}), 500
+
+
+
+
 
 
 
@@ -812,9 +982,13 @@ def upload_teacher_photo():
         return jsonify({"error": "Missing file"}), 400
 
 
+
+
     teachers_id = request.user["sub"]
     filename = f"pfp/teacher-{teachers_id}-{int(datetime.now().timestamp())}.{file.filename.rsplit('.', 1)[-1]}"
     data = file.read()
+
+
 
 
     try:
@@ -822,12 +996,18 @@ def upload_teacher_photo():
         sb.storage.from_("hmh-images").upload(filename, data)
 
 
+
+
         # Update teacher record with just the path
         sb.table("teachers").update({"photo_url": filename}).eq("teachers_id", teachers_id).execute()
 
 
+
+
         # Generate a viewable URL
         photo_url = _resolve_photo_url(filename, bucket="hmh-images")
+
+
 
 
         return jsonify({
@@ -836,9 +1016,13 @@ def upload_teacher_photo():
         }), 200
 
 
+
+
     except Exception as e:
         print("🔥 upload_teacher_photo failed:", e)
         return jsonify({"error": str(e)}), 500
+
+
 
 
 # ---------- Teacher Profile Update ----------
@@ -850,18 +1034,31 @@ def update_teacher_profile():
     teachers_id = request.user["sub"]
 
 
+
+
     # Prevent updating restricted fields
-    disallowed = {"teachers_id", "password", "role", "login_id"}
+    disallowed = {"teachers_id", "password", "role", "login_id", "initials"}
     payload = {k: v for k, v in payload.items() if k not in disallowed}
+
+
+    payload.pop("initials", None)
+
+
+
+
 
 
     if not payload:
         return jsonify({"error": "No editable fields provided"}), 400
 
 
+
+
     try:
         # Update teacher info
         sb.table("teachers").update(payload).eq("teachers_id", teachers_id).execute()
+
+
 
 
         # Fetch updated record
@@ -875,13 +1072,19 @@ def update_teacher_profile():
             return jsonify({"error": err}), 500
 
 
+
+
         _inject_resolved_photo(row, bucket="hmh-images")
         return jsonify(row), 200
+
+
 
 
     except Exception as ex:
         print("🔥 update_teacher_profile error:", ex)
         return jsonify({"error": str(ex)}), 500
+
+
 
 
 # ---------- Rooms ----------
@@ -894,17 +1097,25 @@ def rooms():
         return jsonify({"error": err}), 500
 
 
+
+
     counts = {}
     for r in rows or []:
         key = (r.get("room_assignment") or "").strip() or "Unassigned"
         counts[key] = counts.get(key, 0) + 1
 
 
+
+
     for k in ["Room A", "Room B", "Room C", "Room D", "Unassigned"]:
         counts.setdefault(k, 0)
 
 
+
+
     return jsonify([{"room": k, "count": v} for k, v in counts.items()])
+
+
 
 
 # ---------- Students (list/create) ----------
@@ -916,9 +1127,13 @@ def list_students():
     search = (request.args.get("q") or "").strip()
 
 
+
+
     q = sb.table("students").select(
         "students_id,login_id,first_name,middle_name,last_name,birthday,diagnosis,enrollment_status,room_assignment,photo_url"
     ).order("last_name")
+
+
 
 
     if room:
@@ -927,15 +1142,25 @@ def list_students():
         q = q.ilike("last_name", f"%{search}%")
 
 
+
+
     rows, err = sb_exec(q)
     if err:
         return jsonify({"error": err}), 500
+
+
 
 
     rows = rows or []
     for r in rows:
         _inject_resolved_photo(r)
     return jsonify(rows)
+
+
+
+
+
+
 
 
 
@@ -949,7 +1174,11 @@ def create_student():
     sb = supabase_client.client
 
 
+
+
     incoming = request.json or {}
+
+
 
 
     # Assign password
@@ -958,8 +1187,12 @@ def create_student():
     incoming["password"] = hashed
 
 
+
+
     # Sanitize input based on allowed fields
     payload = _sanitize_student_payload(incoming)
+
+
 
 
     # Validate required fields
@@ -970,9 +1203,13 @@ def create_student():
         }), 400
 
 
+
+
     # Ensure photo_url exists
     if not payload.get("photo_url"):
         payload["photo_url"] = ""
+
+
 
 
     # INSERT — supabase-py v1/v2 safe version
@@ -982,10 +1219,14 @@ def create_student():
     )
 
 
+
+
     if err:
         print("🔥 INSERT ERROR:", err)
         print("🔥 PAYLOAD:", payload)
         return jsonify({"error": str(err)}), 500
+
+
 
 
     # Supabase returns list of rows
@@ -993,7 +1234,15 @@ def create_student():
         row = row[0]
 
 
+
+
     return jsonify(row), 201
+
+
+
+
+
+
 
 
 
@@ -1014,8 +1263,12 @@ def get_student(students_id):
         return jsonify({"error": "Not found"}), 404
 
 
+
+
     _inject_resolved_photo(row)
     return jsonify(row)
+
+
 
 
 @teacher_bp.put("/student/<uuid:students_id>")
@@ -1024,13 +1277,19 @@ def update_student(students_id):
     sb = supabase_client.client
 
 
+
+
     incoming = request.get_json(silent=True) or {}
     incoming.pop("students_id", None)
+
+
 
 
     if "raw_password" in incoming:
         raw = incoming.pop("raw_password") or "hmh123"
         incoming["password"] = bcrypt.hashpw(raw.encode(), bcrypt.gensalt()).decode()
+
+
 
 
     # Get current row
@@ -1046,18 +1305,26 @@ def update_student(students_id):
         return jsonify({"error": "Not found"}), 404
 
 
+
+
     # Sanitize + diff
     sanitized = _sanitize_student_payload(incoming, current=current)
     current_view = {k: current.get(k) for k in ALLOWED_STUDENT_FIELDS}
     payload = _diff_payload(current_view, sanitized)
 
 
+
+
     print("PUT /student payload:", payload)
+
+
 
 
     if not payload:
         _inject_resolved_photo(current)
         return jsonify(current), 200
+
+
 
 
     upd_res, upd_err = sb_exec(
@@ -1072,6 +1339,8 @@ def update_student(students_id):
         return jsonify({"error": e2s, "payload": payload}), status
 
 
+
+
     updated, e3 = sb_exec(
         sb.table("students")
         .select("*")
@@ -1084,8 +1353,12 @@ def update_student(students_id):
         return jsonify({"error": "Not found"}), 404
 
 
+
+
     _inject_resolved_photo(updated)
     return jsonify(updated)
+
+
 
 
 # -------------------------------------------------------
@@ -1099,12 +1372,16 @@ def delete_student(students_id):
     return jsonify({"ok": True})
 
 
+
+
 # ---------- Student Progress Dashboard ----------
 @teacher_bp.get("/student/<uuid:students_id>/progress")
 @require_teacher
 def student_progress(students_id):
     """
     Strictly SELECT-only; matches your available columns.
+
+
 
 
     Returns:
@@ -1120,6 +1397,8 @@ def student_progress(students_id):
     sb = supabase_client.client
 
 
+
+
     def _parse_dt(s):
         if not s:
             return None
@@ -1129,10 +1408,14 @@ def student_progress(students_id):
             return None
 
 
+
+
     def _ph_day(dt):
         if not dt:
             return None
         return dt.astimezone(timezone(timedelta(hours=8))).date().isoformat()
+
+
 
 
     # ---- lesson_avg straight from the view (only existing columns) ----
@@ -1147,12 +1430,16 @@ def student_progress(students_id):
     ]
 
 
+
+
     # ---- Speech trend (manual join via activities.type) ----
     att_rows = sb_safe_select(
         sb.table("activity_attempts")
         .select("activities_id, score, created_at")
         .eq("students_id", str(students_id))
     )
+
+
 
 
     # fetch activity types for those ids
@@ -1166,6 +1453,8 @@ def student_progress(students_id):
             )
             for a in rows:
                 act_type[int(a["id"])] = (a.get("type") or "").lower()
+
+
 
 
     speech_day = {}
@@ -1187,8 +1476,14 @@ def student_progress(students_id):
         b["sum"] += float(sc); b["n"] += 1
 
 
+
+
     speech = [{"date": d, "avg": round(v["sum"]/max(1, v["n"]), 1)}
             for d, v in sorted(speech_day.items())]
+
+
+
+
 
 
 
@@ -1199,6 +1494,8 @@ def student_progress(students_id):
           .select("expected_emotion, detected_emotion, created_at")
           .eq("students_id", str(students_id))
     )
+
+
 
 
     # trend per PH day
@@ -1216,6 +1513,8 @@ def student_progress(students_id):
     emotion_trend = list(emotion)  # same shape/series
 
 
+
+
     # breakdown by expected emotion
     emo_stat = {}
     for r in emo_rows:
@@ -1229,6 +1528,8 @@ def student_progress(students_id):
         {"emotion": k, "avg_match": round(100.0 * v["ok"]/max(1, v["n"]), 1)}
         for k, v in sorted(emo_stat.items())
     ]
+
+
 
 
     # ---- Engagement (last 30d) from sessions with fallback) ----
@@ -1260,8 +1561,14 @@ def student_progress(students_id):
         b["sum"] += mins; b["n"] += 1
 
 
+
+
     engagement = [{"date": d, "value": round(v["sum"]/max(1, v["n"]), 1)}
                 for d, v in sorted(bucket.items())]
+
+
+
+
 
 
 
@@ -1287,8 +1594,12 @@ def student_progress(students_id):
     letter_accuracy.sort(key=lambda x: x["label"].lower())
 
 
+
+
     mastered_words = [w for w, v in word_acc.items() if v["n"] >= 3 and (v["sum"]/v["n"]) >= 80]
     needs_practice_words = [w for w, v in word_acc.items() if v["n"] >= 3 and (v["sum"]/v["n"]) < 60]
+
+
 
 
     # ---- Activity “heatmap” but sparse: ONLY real cells, no fabricated zeros ----
@@ -1310,6 +1621,8 @@ def student_progress(students_id):
                 meta_by_id[int(a["id"])] = a
 
 
+
+
     # aggregate avg score per (lesson_id, sort_order) WITHOUT filling gaps
     by_lesson_col = {}
     for r in att_raw:
@@ -1326,6 +1639,8 @@ def student_progress(students_id):
         b["sum"] += float(sc); b["n"] += 1
 
 
+
+
     # build sparse rows: each row is a list of existing cells (no 0% placeholders)
     from collections import defaultdict
     rows_map = defaultdict(list)  # lid -> list of (col, avg)
@@ -1334,12 +1649,16 @@ def student_progress(students_id):
         rows_map[lid].append((col, avg))
 
 
+
+
     activity_heatmap = []
     for lid in sorted(rows_map.keys()):
         # sort columns by sort_order and push real cells only
         cols = sorted(rows_map[lid], key=lambda x: x[0])
         row_cells = [{"acc": avg, "label": f"L{lid}-A{col+1}"} for col, avg in cols]
         activity_heatmap.append(row_cells)
+
+
 
 
     payload = {
@@ -1361,6 +1680,12 @@ def student_progress(students_id):
 
 
 
+
+
+
+
+
+
 @teacher_bp.get("/student/<uuid:students_id>/recommendations")
 @require_teacher
 def student_recommendations(students_id):
@@ -1370,6 +1695,8 @@ def student_recommendations(students_id):
           .select("lesson_id, lesson_avg")
           .eq("students_id", str(students_id))
     )
+
+
 
 
     if not rows:
@@ -1382,6 +1709,8 @@ def student_recommendations(students_id):
         })
 
 
+
+
     # Pick two lowest lessons as next recommendations
     sorted_rows = sorted(
         [{"lesson_id": r["lesson_id"], "avg": float(r.get("lesson_avg") or 0)} for r in rows if r.get("lesson_id") is not None],
@@ -1390,12 +1719,18 @@ def student_recommendations(students_id):
     next_lessons = [r["lesson_id"] for r in sorted_rows[:2]]
 
 
+
+
     # Focus areas = lessons with <60%
     focus_areas = [r["lesson_id"] for r in rows if float(r.get("lesson_avg") or 0) < 60]
 
 
+
+
     overall_avg = sum(float(r.get("lesson_avg") or 0) for r in rows) / max(len(rows), 1)
     remark = "On track" if overall_avg >= 60 else "Needs support"
+
+
 
 
     return jsonify({
@@ -1405,6 +1740,10 @@ def student_recommendations(students_id):
             "focus_areas": list(dict.fromkeys(focus_areas)),  # unique
         }
     })
+
+
+
+
 
 
 
@@ -1421,6 +1760,7 @@ def student_overview(students_id):
             .eq("students_id", str(students_id))
         )
 
+
         speech_scores, emotion_scores = [], []
         for a in attempts:
             act = a.get("activities") or {}
@@ -1430,8 +1770,10 @@ def student_overview(students_id):
             elif t == "emotion":
                 emotion_scores.append(a.get("score") or 0)
 
+
         speech_avg = round(sum(speech_scores) / len(speech_scores), 1) if speech_scores else 0
         emotion_avg = round(sum(emotion_scores) / len(emotion_scores), 1) if emotion_scores else 0
+
 
         prog = sb_safe_select(
             sb.table("lesson_progress")
@@ -1454,6 +1796,7 @@ def student_overview(students_id):
                 if chap_row:
                     current_chapter = chap_row.get("title_en")
 
+
         sess = sb_safe_select(
             sb.table("sessions")
             .select("started_at, ended_at, mood")
@@ -1462,9 +1805,11 @@ def student_overview(students_id):
             .limit(1)
         )
 
+
         last_session_time = sess[0]["started_at"] if sess else None
         last_session_end = sess[0]["ended_at"] if sess else None
         last_mood = sess[0]["mood"] if sess else None
+
 
         return jsonify({
             "speech_score": speech_avg,
@@ -1476,9 +1821,12 @@ def student_overview(students_id):
             "last_mood": last_mood,
         }), 200
 
+
     except Exception as e:
         print("🔥 Error fetching student overview:", e)
         return jsonify({"error": str(e)}), 500
+
+
 
 
 # ---------- Activity Log ----------
@@ -1494,6 +1842,8 @@ def student_activity_log(students_id):
     sb = supabase_client.client
     try:
         events = []
+
+
 
 
         # Sessions
@@ -1524,6 +1874,8 @@ def student_activity_log(students_id):
             })
 
 
+
+
         # Lesson completions
         progress = sb_safe_select(
             sb.table("lesson_progress")
@@ -1536,6 +1888,8 @@ def student_activity_log(students_id):
             status = (r.get("status") or "").strip().lower()
             if status != "completed":
                 continue
+
+
 
 
             lesson_id = r.get("lesson_id")
@@ -1553,9 +1907,13 @@ def student_activity_log(students_id):
                         chapter_title = chap_row.get("title_en")
 
 
+
+
             # Use best_score (numeric) if present
             score_val = r.get("best_score")
             score_rounded = round(score_val) if isinstance(score_val, (int, float)) else None
+
+
 
 
             events.append({
@@ -1565,6 +1923,10 @@ def student_activity_log(students_id):
                 "detail": f"Chapter {chapter_title}" if chapter_title else "Lesson completed",
                 "score": score_rounded
             })
+
+
+
+
 
 
 
@@ -1583,8 +1945,10 @@ def student_activity_log(students_id):
             if t not in ("asr", "speech", "emotion"):
                 continue
 
+
             # normalize type for output
             out_type = "SPEECH" if t in ("asr", "speech") else "EMOTION"
+
 
             events.append({
                 "type": out_type,
@@ -1596,13 +1960,32 @@ def student_activity_log(students_id):
 
 
 
+
+
+
         events.sort(key=lambda x: x.get("ts") or "", reverse=True)
         return jsonify(events), 200
+
+
 
 
     except Exception as e:
         print("🔥 Error building activity log:", e)
         return jsonify({"error": str(e)}), 500
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

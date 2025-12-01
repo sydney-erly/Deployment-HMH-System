@@ -132,17 +132,12 @@ def get_profile():
 
     student = s[0]
 
-    # ----------------------------------------
-    # Auto-assign default avatar if missing
-    # ----------------------------------------
-    if not student.get("photo_url"):
-        print("DEBUG: Student sex =", repr(student.get("sex")))
-
-
+    
+    # Assign default only if photo_url is NULL (not empty string)
+    if student.get("photo_url") is None:
         default_url = _default_photo_for_gender(student.get("sex"))
         student["photo_url"] = default_url
         sb.table("students").update({"photo_url": default_url}).eq("students_id", sid).execute()
-        print("DEBUG: Assigned default avatar", default_url)
 
 
         # ----------------------------------------
