@@ -497,23 +497,29 @@ def student_dashboard():
             key=lambda x: (x.get("sort_order") or 9999)
         )
 
-        is_focus  = ch_no in focus_set
-        is_future = ch_no > max(focus_set)
-        # is_review not used explicitly; anything not focus and not future becomes review.
+        is_focus = ch_no in focus_set
+
+        # 🔹 NEW: sequential unlock based on previous chapter completion
+        prev_ch_no = ch_no - 1
+        prev_ch_completed = False
+        if prev_ch_no >= 1:
+            prev_ch_id = next((c2["id"] for c2 in chapters if c2["sort_order"] == prev_ch_no), None)
+            if prev_ch_id:
+                prev_lessons = per_ch_lessons.get(prev_ch_id, [])
+                prev_ch_completed = _chapter_complete_first5(prog, prev_lessons)
+
+        # "Future" means beyond assigned focus chapters AND previous chapter not yet completed
+        is_future = (ch_no > max(focus_set)) and (not prev_ch_completed)
 
         # If any lesson in this chapter is unlocked/completed in lesson_progress,
-        # we **override** the blanket future lock and show the chapter as accessible.
+        # we override the blanket future lock and show the chapter as accessible.
         chapter_has_access = any(
             _lesson_state((L.get("id") or L.get("lesson_id"))) != "locked"
             for L in raw_lessons
             if isinstance(L, dict) and (L.get("id") or L.get("lesson_id"))
         )
 
-        # Decide chapter mode
-
-  
-
-        # NEW: consider backend chapter unlocks
+        # consider backend unlocks explicitly (status=unlocked/completed)
         real_chapter_unlocked = any(
             (
                 prog.get((L.get("id") or L.get("lesson_id")), {})
@@ -523,25 +529,21 @@ def student_dashboard():
             if isinstance(L, dict)
         )
 
- 
-        # NEW RULE:
-        # 1. Speech-level focus chapters still appear as focus.
-        # 2. Review chapters appear normally.
-        # 3. Future chapters are normally locked…
-        # 4. BUT if ANY lesson is unlocked/completed, override to open.
-
-        if chapter_has_access or real_chapter_unlocked:
-            # Chapter has real progress → force open.
+        # 🔹 NEW RULE:
+        # 1. If previous chapter is completed → this chapter is always open as review.
+        # 2. Else if it has any progress/unlock → open (focus or review).
+        # 3. Else: apply assigned chapter + future locking.
+        if prev_ch_completed:
+            mode = "review"
+        elif chapter_has_access or real_chapter_unlocked:
             mode = "focus" if is_focus else "review"
         else:
-            # No progress → apply assigned chapter gating
             if is_focus:
                 mode = "focus"
             elif is_future:
                 mode = "locked"
             else:
                 mode = "review"
-
 
         lessons_out = []
         prev_completed = True  # for sequential gating inside focus chapters
@@ -611,6 +613,7 @@ def student_dashboard():
         },
         "chapters": out
     })
+
 
 # ----------------------------------------------------------
 # Activities for a lesson (guarded)
