@@ -563,10 +563,7 @@ def student_dashboard():
             if mode == "locked":
                 status = "locked"  # truly future and no access recorded
             elif mode == "review":
-                # review chapters are open; prefer real state; otherwise default to unlocked
-                status = real if real != "locked" else "unlocked"
-            else:
-                # focus: sequential gating but still respect already-completed lessons
+                # NEW: sequential gating also applies to review chapters
                 if real == "completed":
                     status = "completed"
                     prev_completed = True
@@ -580,6 +577,7 @@ def student_dashboard():
                     else:
                         status = "unlocked" if prev_completed else "locked"
                         prev_completed = (real == "completed")
+
 
             lessons_out.append({
                 "id": int(lid),
