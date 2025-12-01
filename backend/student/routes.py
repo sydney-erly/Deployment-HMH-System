@@ -321,24 +321,33 @@ def update_profile():
         if not photo:
             return jsonify({"error": "No photo uploaded"}), 400
 
-        # Save binary
         filename = f"{sid}/{secure_filename(photo.filename)}"
         file_bytes = photo.read()
 
+        storage = sb.storage.from_("hmh-images")
+
         try:
-            sb.storage.from_("hmh-images").upload(
+            # Remove existing file first (manual upsert)
+            try:
+                storage.remove([filename])
+            except Exception:
+                pass
+
+            # Upload file (NO "upsert"=>True, Supabase will crash with bool header)
+            storage.upload(
                 path=filename,
                 file=file_bytes,
                 file_options={
-                    "upsert": True,
-                    "content-type": photo.mimetype,   # FIXED!
+                    "content-type": photo.mimetype,  # must be string
                 },
             )
+
         except Exception as e:
             print("UPLOAD ERROR FULL:", repr(e))
+            return jsonify({"error": "Upload failed"}), 500
 
-            return jsonify({"error": "Upload failed", "details": str(e)}), 500
-
+        # Generate public URL
+        public_url = storage.get_public_url(filename)
 
         # Update DB
         sb.table("students") \
@@ -364,6 +373,7 @@ def update_profile():
           .execute()
 
     return jsonify({"ok": True, "updated": updates})
+
 
 @student_bp.put("/profile/email")
 @require_student
