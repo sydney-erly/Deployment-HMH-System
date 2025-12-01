@@ -20,7 +20,8 @@ export async function apiFetch(path, opts = {}) {
     url += `?${qs.toString()}`;
   }
 
-  const isForm = typeof FormData !== "undefined" && body instanceof FormData;
+  const isForm = body instanceof FormData || opts.isForm === true;
+
   const headers = {
     ...(isForm ? {} : { "Content-Type": "application/json" }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
