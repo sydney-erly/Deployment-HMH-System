@@ -524,14 +524,15 @@ def student_dashboard():
         )
 
         # Determine default behavior
-        if is_future and (chapter_has_access or real_chapter_unlocked):
-            mode = "review"
-        elif is_future:
-            mode = "locked"
-        elif is_focus:
-            mode = "focus"
+        # NEW RULE:
+        # Chapters are focus/review by speech level, BUT
+        # if ANY lesson is unlocked, chapter must be open (not locked).
+        if chapter_has_access or real_chapter_unlocked:
+            mode = "focus" if is_focus else "review"
         else:
-            mode = "review"
+            # Only lock if never unlocked before
+            mode = "locked" if is_future else ("focus" if is_focus else "review")
+
 
 
         lessons_out = []
