@@ -326,17 +326,18 @@ def update_profile():
         file_bytes = photo.read()
 
         try:
-            # This is the WORKING upload for supabase-py
             sb.storage.from_("hmh-images").upload(
                 path=filename,
                 file=file_bytes,
-                file_options={"upsert": True, "content_type": photo.mimetype}
+                file_options={
+                    "upsert": True,
+                    "content-type": photo.mimetype,   # FIXED!
+                },
             )
         except Exception as e:
-            print("UPLOAD ERROR:", e)
+            print("UPLOAD ERROR:", repr(e))
             return jsonify({"error": "Upload failed", "details": str(e)}), 500
 
-        public_url = sb.storage.from_("hmh-images").get_public_url(filename)
 
         # Update DB
         sb.table("students") \
