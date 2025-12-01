@@ -78,13 +78,12 @@ export default function StudentProfile() {
   const defaultPfp =
     "https://yourproject.supabase.co/storage/v1/object/public/hmh-images/pfp/defaultpfp.png";
 
-  // Derived values
   const totalLessons = 30;
   const level = Math.min(stats.lessonsCompleted, totalLessons);
   const birth = student.birthday ? new Date(student.birthday) : null;
   const age = birth ? new Date().getFullYear() - birth.getFullYear() : "-";
 
-  // --- Scholar description based on speech level ---
+  // Scholar description dynamic
   let scholarDesc = "";
   if (student.speech_level === "non_verbal") {
     scholarDesc =
@@ -103,7 +102,6 @@ export default function StudentProfile() {
         : "Matutunan ang 10 maiikling pangungusap sa isang kabanata";
   }
 
-  // --- Achievements (merge from DB + local progress) ---
   const backendAchievements = (data.achievements || []).map((a) => ({
     id: a.achievements_code,
     name: a.achievements?.name || a.achievements_code,
@@ -152,14 +150,17 @@ export default function StudentProfile() {
     },
   ];
 
-  const combinedAchievements = [...backendAchievements, ...localProgressAchievements];
+  const combinedAchievements = [
+    ...backendAchievements,
+    ...localProgressAchievements,
+  ];
 
   const iconMap = {
     wildfire: wildfireImg,
     scholar: scholarImg,
     sharpshooter: sharpshooterImg,
     weekend: weekendImg,
-    first_correct: wildfireImg, // optional placeholders
+    first_correct: wildfireImg,
     three_in_a_row: scholarImg,
   };
 
@@ -214,39 +215,38 @@ export default function StudentProfile() {
         <p className="text-sm opacity-70">
           {lang === "en" ? "Level" : "Antas"} {level}/30
         </p>
-
-        {/* Email Field */}
-        <div className="mt-3">
-          <label className="text-sm opacity-70 block mb-1">
-            {lang === "en" ? "Email" : "Email"}
-          </label>
-
-          <input
-            type="email"
-            defaultValue={student.email || ""}
-            placeholder={lang === "en" ? "Enter email..." : "Ilagay ang email..."}
-            className="w-full px-3 py-2 bg-[#0F1520] border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#FFC84A]"
-            onBlur={async (e) => {
-              const email = e.target.value.trim();
-              try {
-                const res = await apiFetch("/student/profile", {
-                  method: "PUT",
-                  token: auth.token(),
-                  body: { email },
-                });
-
-                setData((prev) => ({
-                  ...prev,
-                  student: { ...prev.student, email },
-                }));
-              } catch (err) {
-                console.error("Email update failed:", err);
-              }
-            }}
-          />
-        </div>
-
       </motion.div>
+
+      {/* Email block (separate card) */}
+      <div className="bg-[#161B22] rounded-2xl p-4 w-full max-w-md mt-4">
+        <label className="text-sm opacity-70 block mb-1">
+          {lang === "en" ? "Email" : "Email"}
+        </label>
+
+        <input
+          type="email"
+          defaultValue={student.email || ""}
+          placeholder={lang === "en" ? "Enter email..." : "Ilagay ang email..."}
+          className="w-full px-3 py-2 bg-[#0F1520] border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#FFC84A]"
+          onBlur={async (e) => {
+            const email = e.target.value.trim();
+            try {
+              await apiFetch("/student/profile", {
+                method: "PUT",
+                token: auth.token(),
+                body: { email },
+              });
+
+              setData((prev) => ({
+                ...prev,
+                student: { ...prev.student, email },
+              }));
+            } catch (err) {
+              console.error("Email update failed:", err);
+            }
+          }}
+        />
+      </div>
 
       {/* Stats Section */}
       <div className="w-full max-w-md mt-8">
@@ -255,7 +255,6 @@ export default function StudentProfile() {
         </h3>
 
         <div className="grid grid-cols-3 gap-3">
-          {/* Day Streak */}
           <div className="bg-[#161B22] rounded-xl p-3 flex flex-col items-center justify-center text-center">
             <img src={streakImg} alt="streak" className="w-10 h-10 mb-2" />
             <p className="text-sm text-gray-400">
@@ -264,7 +263,6 @@ export default function StudentProfile() {
             <p className="text-lg font-bold">{stats.streakDays || 0}</p>
           </div>
 
-          {/* Lessons Done */}
           <div className="bg-[#161B22] rounded-xl p-3 flex flex-col items-center justify-center text-center">
             <img src={lessonImg} alt="lessons" className="w-10 h-10 mb-2" />
             <p className="text-sm text-gray-400">
@@ -273,7 +271,6 @@ export default function StudentProfile() {
             <p className="text-lg font-bold">{stats.lessonsCompleted || 0}</p>
           </div>
 
-          {/* Progress */}
           <div className="bg-[#161B22] rounded-xl p-3 flex flex-col items-center justify-center text-center">
             <img src={progressImg} alt="progress" className="w-10 h-10 mb-2" />
             <p className="text-sm text-gray-400">
@@ -298,11 +295,7 @@ export default function StudentProfile() {
                 key={a.id}
                 className="bg-[#161B22] rounded-xl p-4 shadow-md flex items-center gap-3"
               >
-                <img
-                  src={icon}
-                  alt={a.name}
-                  className="w-10 h-10 flex-shrink-0"
-                />
+                <img src={icon} alt={a.name} className="w-10 h-10" />
                 <div className="flex-1">
                   <div className="flex justify-between items-center mb-1">
                     <p className="font-semibold">{a.name}</p>
@@ -319,7 +312,7 @@ export default function StudentProfile() {
                           100
                         )}%`,
                       }}
-                    ></div>
+                    />
                   </div>
                   <p className="text-xs mt-2 text-gray-400">{a.desc}</p>
                 </div>
@@ -329,7 +322,7 @@ export default function StudentProfile() {
         </div>
       </div>
 
-      {/* Divider line */}
+      {/* Divider */}
       <hr className="w-full max-w-md border-t border-gray-700 mt-10 mb-6 opacity-60" />
 
       {/* Logout */}
