@@ -323,8 +323,20 @@ def update_profile():
         
         # Upload to Supabase
         filename = f"{sid}/{secure_filename(photo.filename)}"
-        sb.storage.from_("hmh-images").upload(filename, photo, {"upsert": True})
+
+        # Read binary content
+        file_bytes = photo.read()
+
+        # Upload properly
+        upload_res = sb.storage.from_("hmh-images").upload(
+            path=filename,
+            file=file_bytes,
+            file_options={"content_type": photo.mimetype, "upsert": True},
+        )
+
+        # Generate public URL
         public_url = sb.storage.from_("hmh-images").get_public_url(filename)
+
 
         # Save to DB
         sb.table("students").update({"photo_url": public_url}).eq("students_id", sid).execute()
