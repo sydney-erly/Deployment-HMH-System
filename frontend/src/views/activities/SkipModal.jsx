@@ -3,24 +3,38 @@ import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import brokenHeart from "../../assets/broken-heart.png";
-import closeIcon from "../../assets/home.png";       
-import skipIcon from "../../assets/play.png";    
-import retryIcon from "../../assets/retry.png"; 
+import closeIcon from "../../assets/home.png";
+import skipIcon from "../../assets/play.png";
+import retryIcon from "../../assets/retry.png";
 
-export default function SkipModal({ visible, onSkip, onRetry, onExit, lang = "en" }) {
+export default function SkipModal({
+  visible,
+  onSkip,
+  onRetry,
+  onExit,
+  lang = "en",
+}) {
   if (!visible) return null;
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-[9999]">
+      <div
+        className="fixed inset-0 flex items-center justify-center bg-black/40 z-[9999] pointer-events-auto"
+        onClick={(e) => e.stopPropagation()} // prevent backdrop clicks
+      >
         <motion.div
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.8, opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="bg-[#FFF7E3] rounded-3xl shadow-2xl p-8 text-center max-w-sm mx-4 border-4 border-[#F9D678]"
+          className="bg-[#FFF7E3] rounded-3xl shadow-2xl p-8 text-center max-w-sm mx-4 border-4 border-[#F9D678] pointer-events-auto"
+          onClick={(e) => e.stopPropagation()} // allow inner clicks only
         >
-          <img src={brokenHeart} className="w-24 h-24 mx-auto mb-3" />
+          <img
+            src={brokenHeart}
+            className="w-24 h-24 mx-auto mb-3 select-none pointer-events-none"
+            alt="broken heart"
+          />
 
           <h2 className="text-3xl font-extrabold text-[#9F2C0C] mb-1 drop-shadow">
             {lang === "tl" ? "Oops!" : "Oops!"}
@@ -34,34 +48,43 @@ export default function SkipModal({ visible, onSkip, onRetry, onExit, lang = "en
 
           {/* BUTTON ROW */}
           <div className="flex justify-center gap-6">
-            
-            {/* ❌ EXIT */}
+
+            {/* HOME / EXIT */}
             <button
-              onClick={onExit}
+              onClick={(e) => {
+                e.stopPropagation();
+                onExit();
+              }}
               className="active:scale-95 transition-transform"
             >
               <img
                 src={closeIcon}
                 className="w-16 h-16 hover:scale-110 transition-transform"
-                alt="exit"
+                alt="exit to home"
               />
             </button>
 
-            {/* ▶️ SKIP */}
+            {/* SKIP / CONTINUE */}
             <button
-              onClick={onSkip}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSkip();
+              }}
               className="active:scale-95 transition-transform"
             >
               <img
                 src={skipIcon}
                 className="w-20 h-20 hover:scale-110 transition-transform"
-                alt="skip"
+                alt="skip activity"
               />
             </button>
 
-            {/* 🔄 RETRY */}
+            {/* RETRY */}
             <button
-              onClick={onRetry}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRetry();
+              }}
               className="active:scale-95 transition-transform"
             >
               <img
