@@ -1,5 +1,6 @@
 // src/pages/TeacherStudents.jsx
-// updated 11/14/2025
+// updated 11/14/2025 + avatar column added
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { apiFetch } from "../lib/api";
@@ -14,6 +15,16 @@ import { GoHome } from "react-icons/go";
 import { PiStudentBold } from "react-icons/pi";
 import { SiGoogleanalytics } from "react-icons/si";
 
+// Fallback avatar SVG
+const fallbackAvatar =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'>
+      <circle cx='48' cy='48' r='44' fill='none' stroke='%232E4bff' stroke-width='3'/>
+      <circle cx='48' cy='38' r='14' fill='%232E4bff'/>
+      <path d='M16 78c7-12 19-18 32-18s25 6 32 18' fill='%232E4bff'/>
+    </svg>`
+  );
 
 export default function TeacherStudents() {
   const [rooms, setRooms] = useState([]);
@@ -21,29 +32,23 @@ export default function TeacherStudents() {
   const [roomSelected, setRoomSelected] = useState(false);
   const [students, setStudents] = useState([]);
 
-
   // Search + Sort state
   const [q, setQ] = useState("");
   const [sortBy, setSortBy] = useState("last"); // 'last' | 'first'
-
-
   const [showNew, setShowNew] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [dragX, setDragX] = useState(0);
   const draggingRef = useRef(false);
   const startXRef = useRef(0);
 
-
   const token = auth.token();
   const nav = useNavigate();
   const location = useLocation();
-
 
   // Fetch rooms
   useEffect(() => {
     apiFetch("/teacher/rooms", { token }).then(setRooms);
   }, [token]);
-
 
   // Fetch students (by room)
   useEffect(() => {
@@ -54,15 +59,12 @@ export default function TeacherStudents() {
     }).then(setStudents);
   }, [room, roomSelected, token]);
 
-
   // Derived: filtered + sorted students
   const viewStudents = useMemo(() => {
     const norm = (s) => (s || "").toString().toLowerCase();
     const query = norm(q);
 
-
     let list = [...students];
-
 
     if (query) {
       list = list.filter((s) => {
@@ -72,7 +74,6 @@ export default function TeacherStudents() {
         return first.includes(query) || last.includes(query) || login.includes(query);
       });
     }
-
 
     const cmp = (a, b, keyPrimary, keySecondary) => {
       const A = (a[keyPrimary] || "").toString();
@@ -84,17 +85,14 @@ export default function TeacherStudents() {
       return AA.localeCompare(BB, undefined, { sensitivity: "base" });
     };
 
-
     if (sortBy === "first") {
       list.sort((a, b) => cmp(a, b, "first_name", "last_name"));
     } else {
-      list.sort((a, b) => cmp(a, b, "last_name", "first_name")); // default: last name
+      list.sort((a, b) => cmp(a, b, "last_name", "first_name"));
     }
-
 
     return list;
   }, [students, q, sortBy]);
-
 
   // Background
   useEffect(() => {
@@ -105,7 +103,6 @@ export default function TeacherStudents() {
     };
   }, []);
 
-
   // Scroll lock when drawer open
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -115,12 +112,10 @@ export default function TeacherStudents() {
     };
   }, [navOpen]);
 
-
   // Swipe gesture setup
   const EDGE_WIDTH = 60;
   const OPEN_THRESHOLD = 80;
   const CLOSE_THRESHOLD = -80;
-
 
   function onEdgeTouchStart(e) {
     if (navOpen) return;
@@ -131,7 +126,6 @@ export default function TeacherStudents() {
     setDragX(0);
   }
 
-
   function onEdgeTouchMove(e) {
     if (!draggingRef.current || navOpen) return;
     const t = e.touches?.[0];
@@ -140,14 +134,12 @@ export default function TeacherStudents() {
     setDragX(delta);
   }
 
-
   function onEdgeTouchEnd() {
     if (!draggingRef.current || navOpen) return;
     draggingRef.current = false;
     if (dragX > OPEN_THRESHOLD) setNavOpen(true);
     setDragX(0);
   }
-
 
   function onDrawerTouchStart(e) {
     const t = e.touches?.[0];
@@ -157,7 +149,6 @@ export default function TeacherStudents() {
     setDragX(0);
   }
 
-
   function onDrawerTouchMove(e) {
     if (!draggingRef.current) return;
     const t = e.touches?.[0];
@@ -166,14 +157,12 @@ export default function TeacherStudents() {
     setDragX(Math.min(0, delta));
   }
 
-
   function onDrawerTouchEnd() {
     if (!draggingRef.current) return;
     draggingRef.current = false;
     if (dragX < CLOSE_THRESHOLD) setNavOpen(false);
     setDragX(0);
   }
-
 
   // Drawer transform logic
   const drawerStyle = {};
@@ -188,17 +177,15 @@ export default function TeacherStudents() {
     drawerClasses += " -translate-x-full";
   }
 
-
   return (
     <div className="min-h-[100dvh] bg-[#F6F7FB] flex lg:pl-64 overflow-hidden">
-      {/* ✅ Desktop Sidebar */}
+      {/* Desktop Sidebar */}
       <aside className="hidden lg:flex fixed top-0 left-0 h-screen w-64 bg-[#2E4bff] text-white px-6 py-8 flex flex-col justify-between shadow-lg">
         <div>
           <div className="flex flex-col items-center mb-8">
             <img src={hmhIcon} alt="HearMyHeart Icon" className="w-auto h-18 mb-3 object-contain" />
             <div className="text-2xl font-bold">HearMyHeart</div>
           </div>
-
 
           <Link
             to="/teacher"
@@ -212,7 +199,6 @@ export default function TeacherStudents() {
             <span>Dashboard</span>
           </Link>
 
-
           <Link
             to="/teacher/students"
             className={`flex items-center gap-3 px-3 py-2 rounded-xl mb-2 transition-all font-medium ${
@@ -224,7 +210,6 @@ export default function TeacherStudents() {
             <PiStudentBold className="text-xl" />
             <span>Students</span>
           </Link>
-
 
           <Link
             to="/teacher/analytics"
@@ -239,7 +224,6 @@ export default function TeacherStudents() {
           </Link>
         </div>
 
-
         <div className="pt-2 border-t border-white/20 flex justify-center">
           <button
             className="p-3 rounded-full hover:bg-white/10 transition-transform"
@@ -253,8 +237,7 @@ export default function TeacherStudents() {
         </div>
       </aside>
 
-
-      {/* ✅ Mobile Drawer */}
+      {/* Mobile Drawer */}
       {!navOpen && (
         <div
           className="lg:hidden fixed inset-y-0 left-0 w-12 z-[60] bg-transparent"
@@ -263,7 +246,6 @@ export default function TeacherStudents() {
           onTouchEnd={onEdgeTouchEnd}
         />
       )}
-
 
       <div
         className={`lg:hidden ${drawerClasses}`}
@@ -276,7 +258,6 @@ export default function TeacherStudents() {
           <img src={hmhIcon} alt="HearMyHeart Icon" className="w-auto h-15 mb-2 object-contain" />
           <div className="text-2xl font-bold">HearMyHeart</div>
         </div>
-
 
         <Link
           to="/teacher"
@@ -303,7 +284,6 @@ export default function TeacherStudents() {
           <SiGoogleanalytics className="text-xl" /> <span>Analytics</span>
         </Link>
 
-
         <div className="mt-auto pt-2 border-t border-white/20 flex justify-center">
           <button
             className="p-3 rounded-full hover:bg-white/10"
@@ -317,7 +297,6 @@ export default function TeacherStudents() {
         </div>
       </div>
 
-
       {navOpen && (
         <div
           className="lg:hidden fixed inset-0 bg-black/40 z-[65]"
@@ -325,13 +304,11 @@ export default function TeacherStudents() {
         />
       )}
 
-
-      {/* ---------- Main Content ---------- */}
+      {/* Main Content */}
       <main className="flex-1 p-8 pt-8 overflow-x-hidden">
         <div className="flex items-center justify-between mb-1">
           <h1 className="text-3xl font-bold">Manage Students</h1>
         </div>
-
 
         {!roomSelected ? (
           <div className="flex flex-col items-start justify-center min-h-[80vh] pb-4 pt-4">
@@ -345,7 +322,6 @@ export default function TeacherStudents() {
                   const headerColor = headerColors[i % headerColors.length];
                   const headerImages = [card1, card2, card3, card4];
                   const headerImage = headerImages[i];
-
 
                   return (
                     <button
@@ -364,7 +340,6 @@ export default function TeacherStudents() {
                           backgroundPosition: "center",
                         }}
                       ></div>
-
 
                       <div className="flex-[1] p-6 flex flex-col justify-center">
                         <h3 className="text-[#1C4211] text-xl sm:text-2xl font-bold mb-1">
@@ -408,16 +383,9 @@ export default function TeacherStudents() {
               })}
             </div>
 
-
-
-
-
-
-
-
-            {/* Sort (left) + Search (right) */}
+            {/* Sort + Search */}
             <div className="mt-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-              {/* Sort: left side */}
+              {/* Sort */}
               <div className="flex items-center gap-2 md:justify-start">
                 <label className="text-sm text-gray-600">Sort by</label>
                 <select
@@ -430,8 +398,7 @@ export default function TeacherStudents() {
                 </select>
               </div>
 
-
-              {/* Search: right side, takes half on desktop */}
+              {/* Search */}
               <div className="relative w-full md:max-w-md md:ml-auto">
                 <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
                 <input
@@ -444,11 +411,6 @@ export default function TeacherStudents() {
               </div>
             </div>
 
-
-
-
-
-
             {/* Table */}
             <div className="bg-white rounded-2xl p-5 shadow-sm mt-4 overflow-x-auto sm:overflow-x-visible">
               <table className="w-full text-sm table-fixed min-w-[600px]">
@@ -460,6 +422,7 @@ export default function TeacherStudents() {
                     <th className="w-[15%]">Status</th>
                   </tr>
                 </thead>
+
                 <tbody>
                   {viewStudents.length === 0 ? (
                     <tr>
@@ -470,14 +433,22 @@ export default function TeacherStudents() {
                   ) : (
                     viewStudents.map((s) => (
                       <tr key={s.students_id} className="border-t hover:bg-gray-50">
-                        <td className="py-3">
+                        <td className="py-3 flex items-center">
+                          <img
+                            src={s.photo_url_resolved || fallbackAvatar}
+                            onError={(e) => (e.currentTarget.src = fallbackAvatar)}
+                            className="w-8 h-8 rounded-full object-cover mr-3 border border-gray-200"
+                            alt="avatar"
+                          />
+
                           <Link
                             to={`/teacher/student/${s.students_id}`}
-                            className="hover:underline"
+                            className="hover:underline truncate"
                           >
                             {s.first_name} {s.last_name}
                           </Link>
                         </td>
+
                         <td className="pr-4">{s.login_id}</td>
                         <td className="pl-5">{s.diagnosis || "—"}</td>
                         <td className="pr-4">{s.enrollment_status || "—"}</td>
@@ -490,8 +461,7 @@ export default function TeacherStudents() {
           </>
         )}
 
-
-        {/* ✅ Floating Add Button */}
+        {/* Floating Add Button */}
         <button
           onClick={() => nav("/teacher/addstudent")}
           className="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 bg-[#2E4bff] text-white w-14 h-14 rounded-full shadow-lg hover:brightness-110 flex items-center justify-center z-[80]"
@@ -499,7 +469,6 @@ export default function TeacherStudents() {
           <FiPlus className="text-2xl" />
         </button>
       </main>
-
 
       {showNew && (
         <NewStudentModal
@@ -513,7 +482,6 @@ export default function TeacherStudents() {
     </div>
   );
 }
-
 
 /* ---------- Modal Component ---------- */
 function NewStudentModal({ onClose, onCreated }) {
@@ -533,11 +501,9 @@ function NewStudentModal({ onClose, onCreated }) {
   });
   const token = auth.token();
 
-
   function set(k, v) {
     setForm((p) => ({ ...p, [k]: v }));
   }
-
 
   async function save() {
     const res = await apiFetch("/teacher/students", {
@@ -548,7 +514,6 @@ function NewStudentModal({ onClose, onCreated }) {
     onCreated(res);
   }
 
-
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-[90]">
       <div className="bg-white rounded-2xl w-full max-w-3xl p-6">
@@ -556,41 +521,70 @@ function NewStudentModal({ onClose, onCreated }) {
         <hr className="border-t-2 border-gray-500 my-6 w-full mx-auto" />
         <div className="text-md font-bold mb-4">Personal Information</div>
 
-
         <div className="grid grid-cols-2 gap-3 mb-6">
           <Input label="First Name" v={form.first_name} onC={(v) => set("first_name", v)} />
           <Input label="Last Name" v={form.last_name} onC={(v) => set("last_name", v)} />
           <Input label="Middle Name" v={form.middle_name} onC={(v) => set("middle_name", v)} />
           <Input label="Birthday" type="date" v={form.birthday} onC={(v) => set("birthday", v)} />
           <Input label="Diagnosis" v={form.diagnosis} onC={(v) => set("diagnosis", v)} />
-          <Input label="Enrollment Status" v={form.enrollment_status} onC={(v) => set("enrollment_status", v)} />
-          <Select label="Room Assignment" v={form.room_assignment} onC={(v) => set("room_assignment", v)} items={["Room A", "Room B", "Room C", "Room D"]} />
+          <Input
+            label="Enrollment Status"
+            v={form.enrollment_status}
+            onC={(v) => set("enrollment_status", v)}
+          />
+          <Select
+            label="Room Assignment"
+            v={form.room_assignment}
+            onC={(v) => set("room_assignment", v)}
+            items={["Room A", "Room B", "Room C", "Room D"]}
+          />
           <Input label="Schedule" v={form.schedule} onC={(v) => set("schedule", v)} />
         </div>
-
 
         <div className="text-md font-bold mb-4">Student Background</div>
         <div className="grid grid-cols-2 gap-3">
           <Input label="Grade Level" v={form.grade_level} onC={(v) => set("grade_level", v)} />
-          <Input label="School Last Attended" v={form.school_last_attended} onC={(v) => set("school_last_attended", v)} />
+          <Input
+            label="School Last Attended"
+            v={form.school_last_attended}
+            onC={(v) => set("school_last_attended", v)}
+          />
           <Input label="Religion" v={form.religion} onC={(v) => set("religion", v)} />
-          <Input label="Present Address" v={form.address} onC={(v) => set("address", v)} />
-          <Input label="Father's Name" v={form.parent_father} onC={(v) => set("parent_father", v)} />
-          <Input label="Mother's Name" v={form.parent_mother} onC={(v) => set("parent_mother", v)} />
-          <Input label="Contact Number" v={form.parent_contact} onC={(v) => set("parent_contact", v)} />
+          <Input
+            label="Present Address"
+            v={form.address}
+            onC={(v) => set("address", v)}
+          />
+          <Input
+            label="Father's Name"
+            v={form.parent_father}
+            onC={(v) => set("parent_father", v)}
+          />
+          <Input
+            label="Mother's Name"
+            v={form.parent_mother}
+            onC={(v) => set("parent_mother", v)}
+          />
+          <Input
+            label="Contact Number"
+            v={form.parent_contact}
+            onC={(v) => set("parent_contact", v)}
+          />
           <Input label="Email" v={form.email} onC={(v) => set("email", v)} />
         </div>
 
-
         <div className="flex justify-end gap-2 mt-6">
-          <button onClick={onClose} className="px-4 py-2 rounded-xl border">Cancel</button>
-          <button onClick={save} className="px-4 py-2 rounded-xl bg-[#2E4bff] text-white">Save</button>
+          <button onClick={onClose} className="px-4 py-2 rounded-xl border">
+            Cancel
+          </button>
+          <button onClick={save} className="px-4 py-2 rounded-xl bg-[#2E4bff] text-white">
+            Save
+          </button>
         </div>
       </div>
     </div>
   );
 }
-
 
 /* ---------- Reusable Inputs ---------- */
 function Input({ label, v, onC, type = "text" }) {
@@ -606,7 +600,6 @@ function Input({ label, v, onC, type = "text" }) {
     </label>
   );
 }
-
 
 function Select({ label, v, onC, items }) {
   return (
@@ -626,10 +619,3 @@ function Select({ label, v, onC, items }) {
     </label>
   );
 }
-
-
-
-
-
-
-
