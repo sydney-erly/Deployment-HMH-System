@@ -64,8 +64,7 @@ export default function EmotionActivity({ activity, onComplete }) {
     parsedData?.i18n?.en?.expected_emotion ||
     "emotion";
 
-  console.log("🧠 EmotionActivity loaded:", activity);
-  console.log("Expected emotion parsed:", expectedEmotion);
+  
 
   // --------------------------------------------------
   // Camera Setup
@@ -101,15 +100,16 @@ export default function EmotionActivity({ activity, onComplete }) {
 
     return () => {
       mounted = false;
-      stopCamera();   // <--- stop on unmount
+      stopCamera(); // <--- stop on unmount
     };
   }, [lang]);
 
   // --------------------------------------------------
-  // Capture + Analyze
+  // Capture + Analyze (FAST)
   // --------------------------------------------------
   const handleCapture = async () => {
     if (!cameraReady || !videoRef.current || loading || passed) return;
+
     setLoading(true);
 
     const canvas = document.createElement("canvas");
@@ -117,6 +117,7 @@ export default function EmotionActivity({ activity, onComplete }) {
     canvas.height = videoRef.current.videoHeight || 240;
     const ctx = canvas.getContext("2d");
     ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+
     const base64 = canvas.toDataURL("image/jpeg");
 
     try {
@@ -139,10 +140,11 @@ export default function EmotionActivity({ activity, onComplete }) {
 
       if (res.passed) {
         setFlash(true);
-        setTimeout(() => setFlash(false), 180);
+        setTimeout(() => setFlash(false), 150);
 
         setPassed(true);
         playCorrect();
+
         confetti({
           particleCount: 80,
           spread: 70,
@@ -160,7 +162,7 @@ export default function EmotionActivity({ activity, onComplete }) {
         const nextId = res.next_activity?.id || res.next_activity;
 
         setTimeout(() => {
-          stopCamera();    // <--- STOP CAMERA BEFORE NEXT ACTIVITY
+          stopCamera(); // <--- STOP CAMERA BEFORE NEXT ACTIVITY
 
           if (nextId) onComplete?.(nextId);
           else
@@ -170,7 +172,7 @@ export default function EmotionActivity({ activity, onComplete }) {
               layout: "emotion",
               lang,
             });
-        }, 1300);
+        }, 1100);
       } else {
         setFeedback(res.label || "?");
       }
@@ -186,7 +188,7 @@ export default function EmotionActivity({ activity, onComplete }) {
   };
 
   // --------------------------------------------------
-  // Auto Detect Loop
+  // Auto Detect Loop (FAST — every 1 second)
   // --------------------------------------------------
   useEffect(() => {
     if (!cameraReady) return;
@@ -199,7 +201,7 @@ export default function EmotionActivity({ activity, onComplete }) {
 
     const interval = setInterval(() => {
       if (!loading && !passed) handleCapture();
-    }, 2500);
+    }, 1000); // <--- FAST DETECTION INTERVAL
 
     return () => clearInterval(interval);
   }, [cameraReady, passed, loading]);
