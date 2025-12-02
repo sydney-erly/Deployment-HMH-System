@@ -15,7 +15,6 @@ import ChooseActivity from "./ChooseActivity";
 import EmotionActivity from "./EmotionActivity";
 import AsrActivity from "./AsrActivity";
 
-
 import StarModal from "../../components/StarModal";
 import ProgressBar from "../../components/ProgressBar";
 
@@ -26,7 +25,7 @@ import useSessionTicker from "../../hooks/useSessionTicker";
 
 export default function ActivityRunner({ lessonId }) {
   const [activities, setActivities] = useState([]);
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(0); // forward run index
   const [feedback, setFeedback] = useState(null);
   const [showStarModal, setShowStarModal] = useState(false);
   const [starsEarned, setStarsEarned] = useState(0);
@@ -36,19 +35,31 @@ export default function ActivityRunner({ lessonId }) {
   const lang = (localStorage.getItem("hmh_lang") || "en").toLowerCase();
   const [chapterId, setChapterId] = useState(1);
 
+  // NEW: track skipped activities + review phase
+  const [phase, setPhase] = useState("forward"); // "forward" | "review"
+  const [reviewIndex, setReviewIndex] = useState(0); // index inside skipped list
+  const [skippedIds, setSkippedIds] = useState([]); // array of activity.id
+
   const progressKey = `hmh_progress:${lessonId}:${lang}`;
-  
+
   function saveProgress(nextIndex = index, nextScores = scores) {
     try {
-      const bounded = Math.max(0, Math.min(nextIndex, Math.max(0, activities.length - 1)));
+      const bounded = Math.max(
+        0,
+        Math.min(nextIndex, Math.max(0, activities.length - 1))
+      );
       const payload = {
         index: bounded,
-        activityId: activities[bounded]?.id ?? activities[index]?.id ?? null,
+        activityId:
+          activities[bounded]?.id ?? activities[index]?.id ?? null,
         scores: Array.isArray(nextScores) ? nextScores : [],
         updatedAt: Date.now(),
       };
       localStorage.setItem(progressKey, JSON.stringify(payload));
-      localStorage.setItem("hmh_last_lesson", JSON.stringify({ lessonId, lang, ...payload }));
+      localStorage.setItem(
+        "hmh_last_lesson",
+        JSON.stringify({ lessonId, lang, ...payload })
+      );
     } catch {}
   }
 
@@ -62,7 +73,10 @@ export default function ActivityRunner({ lessonId }) {
         const byId = acts.findIndex((a) => a.id === saved.activityId);
         if (byId >= 0) startIndex = byId;
       } else if (Number.isFinite(saved?.index)) {
-        startIndex = Math.min(saved.index, Math.max(0, (acts?.length || 1) - 1));
+        startIndex = Math.min(
+          saved.index,
+          Math.max(0, (acts?.length || 1) - 1)
+        );
       }
       return { index: startIndex, scores: saved?.scores || [] };
     } catch {
@@ -74,7 +88,10 @@ export default function ActivityRunner({ lessonId }) {
     async function load() {
       try {
         setLoading(true);
-        const res = await apiFetch(`/student/lesson/${lessonId}/activities?lang=${lang}`, { token: auth.token() });
+        const res = await apiFetch(
+          `/student/lesson/${lessonId}/activities?lang=${lang}`,
+          { token: auth.token() }
+        );
 
         if (res?.activities) setActivities(res.activities);
         if (res?.meta?.chapter_id) setChapterId(res.meta.chapter_id);
@@ -87,7 +104,10 @@ export default function ActivityRunner({ lessonId }) {
           let startIndex = 0;
 
           if (Number.isFinite(idxParam)) {
-            startIndex = Math.max(0, Math.min(idxParam, res.activities.length - 1));
+            startIndex = Math.max(
+              0,
+              Math.min(idxParam, res.activities.length - 1)
+            );
           } else if (resume) {
             startIndex = resume.index;
             if (Array.isArray(resume.scores)) setScores(resume.scores);
@@ -108,16 +128,27 @@ export default function ActivityRunner({ lessonId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lessonId, lang]);
 
-  const current = activities[index];
+  // DERIVE CURRENT ACTIVITY (forward vs review)
+  let current = null;
+  if (phase === "forward") {
+    current = activities[index];
+  } else if (phase === "review") {
+    const reviewId = skippedIds[reviewIndex];
+    current =
+      activities.find((a) => a.id === reviewId) || null;
+  }
 
   useEffect(() => {
     if (!activities.length) return;
-    saveProgress(index, scores);
-    const url = new URL(window.location.href);
-    url.searchParams.set("i", String(index));
-    window.history.replaceState(null, "", url.toString());
+    if (phase === "forward") {
+      // Only persist forward-run progress
+      saveProgress(index, scores);
+      const url = new URL(window.location.href);
+      url.searchParams.set("i", String(index));
+      window.history.replaceState(null, "", url.toString());
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index, activities.length]);
+  }, [index, activities.length, phase]);
 
   useEffect(() => {
     const onBeforeUnload = () => saveProgress();
@@ -135,7 +166,9 @@ export default function ActivityRunner({ lessonId }) {
 
   //  auto-end & redirect to /session-over when time expires
   useSessionTicker(() => {
-    try { saveProgress(); } catch {}
+    try {
+      saveProgress();
+    } catch {}
     alert(
       lang === "tl"
         ? "Tapos na ang oras ng iyong sesyon. Magkita tayo bukas!"
@@ -145,7 +178,9 @@ export default function ActivityRunner({ lessonId }) {
   });
 
   if (loading) {
-    return <LoadingScreen visible={true} chapterId={chapterId} lang={lang} />;
+    return (
+      <LoadingScreen visible={true} chapterId={chapterId} lang={lang} />
+    );
   }
 
   if (!current)
@@ -155,7 +190,103 @@ export default function ActivityRunner({ lessonId }) {
       </div>
     );
 
-  async function handleActivityComplete(submission) {
+  // Helper: finish lesson (called after forward+review)
+  async function finishLesson(finalScores) {
+    try {
+      const completeRes = await apiFetch(
+        `/student/lesson/${lessonId}/complete`,
+        { method: "POST", token: auth.token() }
+      );
+      const avg = finalScores.length
+        ? finalScores.reduce((a, b) => a + b, 0) / finalScores.length
+        : 100;
+      let stars = 0;
+      if (avg >= 90) stars = 3;
+      else if (avg >= 60) stars = 2;
+      else if (avg >= 30) stars = 1;
+      setStarsEarned(stars);
+      setShowStarModal(true);
+      if (completeRes?.next_lesson_id)
+        console.log("Next lesson:", completeRes.next_lesson_id);
+      try {
+        localStorage.removeItem(progressKey);
+      } catch {}
+    } catch (e) {
+      console.error("Lesson complete error:", e);
+    }
+  }
+
+  // Navigation after each attempt (forward + review)
+  async function navigateAfterAttempt(ctx) {
+    const {
+      isSkipped,
+      newScores,
+      activeIndex,
+      activePhase,
+      activeReviewIndex,
+      activeSkippedIds,
+      activeCurrent,
+    } = ctx;
+
+    setFeedback(null);
+
+    if (activePhase === "forward") {
+      // Update skipped list if this one was skipped
+      let updatedSkipped = activeSkippedIds;
+      if (isSkipped && activeCurrent && !activeSkippedIds.includes(activeCurrent.id)) {
+        updatedSkipped = [...activeSkippedIds, activeCurrent.id];
+        setSkippedIds(updatedSkipped);
+      }
+
+      const nextIndex = activeIndex + 1;
+
+      if (nextIndex < activities.length) {
+        // Continue forward run
+        saveProgress(nextIndex, newScores);
+        setIndex(nextIndex);
+      } else {
+        // Finished forward run
+        if (
+          updatedSkipped.length > 0 ||
+          (isSkipped && activeCurrent && !activeSkippedIds.includes(activeCurrent.id))
+        ) {
+          // There are skipped activities → start review mode
+          setPhase("review");
+          setReviewIndex(0);
+          try {
+            localStorage.removeItem(progressKey);
+          } catch {}
+        } else {
+          // No skipped → finish lesson immediately
+          await finishLesson(newScores);
+        }
+      }
+    } else {
+      // REVIEW PHASE
+      const nextReviewIdx = activeReviewIndex + 1;
+      if (nextReviewIdx < activeSkippedIds.length) {
+        setReviewIndex(nextReviewIdx);
+      } else {
+        // All skipped activities reviewed → finish
+        await finishLesson(newScores);
+      }
+    }
+  }
+
+  async function handleActivityComplete(submission = {}) {
+    if (!current) return;
+
+    const isSkipped = !!submission.skipped;
+
+    // Ensure lesson_id & "skipped" action are in submission
+    const payloadSubmission = {
+      ...submission,
+      lesson_id: lessonId,
+    };
+    if (isSkipped && !payloadSubmission.action) {
+      payloadSubmission.action = "skipped";
+    }
+
     try {
       const res = await apiFetch("/student/attempt", {
         method: "POST",
@@ -164,7 +295,7 @@ export default function ActivityRunner({ lessonId }) {
           activity_id: current.id,
           lesson_id: lessonId,
           lang,
-          submission: { ...submission, lesson_id: lessonId },
+          submission: payloadSubmission,
         },
       });
 
@@ -172,8 +303,19 @@ export default function ActivityRunner({ lessonId }) {
       const newScores = [...scores, score];
       setScores(newScores);
 
-      if (submission.action === "answer_correct" || submission.passed) {
-        confetti({ particleCount: 100, spread: 80, colors: ["#FFC84A", "#2E4BFF", "#FFE5A3"], origin: { y: 0.7 } });
+      const isPassed =
+        payloadSubmission.action === "answer_correct" ||
+        payloadSubmission.passed ||
+        res?.passed;
+
+      // Only show celebration when actually passed (not on skip)
+      if (isPassed && !isSkipped) {
+        confetti({
+          particleCount: 100,
+          spread: 80,
+          colors: ["#FFC84A", "#2E4BFF", "#FFE5A3"],
+          origin: { y: 0.7 },
+        });
         const messages =
           lang === "tl"
             ? [
@@ -200,33 +342,27 @@ export default function ActivityRunner({ lessonId }) {
                 "You’re learning fast!",
                 "Perfect answer!",
               ];
-        setFeedback({ type: "success", message: messages[Math.floor(Math.random() * messages.length)], achievement: res?.inline_achievements?.length > 0 });
+        setFeedback({
+          type: "success",
+          message:
+            messages[Math.floor(Math.random() * messages.length)],
+          achievement: res?.inline_achievements?.length > 0,
+        });
       }
 
-      setTimeout(async () => {
-        setFeedback(null);
-        const nextIndex = index + 1;
-        if (nextIndex < activities.length) {
-          saveProgress(nextIndex, newScores);
-          setIndex(nextIndex);
-        } else {
-          try {
-            const completeRes = await apiFetch(`/student/lesson/${lessonId}/complete`, { method: "POST", token: auth.token() });
-            const avg = newScores.length ? newScores.reduce((a, b) => a + b, 0) / newScores.length : 100;
-            let stars = 0;
-            if (avg >= 90) stars = 3;
-            else if (avg >= 60) stars = 2;
-            else if (avg >= 30) stars = 1;
-            setStarsEarned(stars);
-            setShowStarModal(true);
-            if (completeRes?.next_lesson_id) console.log("Next lesson:", completeRes.next_lesson_id);
-            try {
-              localStorage.removeItem(progressKey);
-            } catch {}
-          } catch (e) {
-            console.error("Lesson complete error:", e);
-          }
-        }
+      // Capture current context to avoid stale closures
+      const ctx = {
+        isSkipped,
+        newScores,
+        activeIndex: index,
+        activePhase: phase,
+        activeReviewIndex: reviewIndex,
+        activeSkippedIds: skippedIds,
+        activeCurrent: current,
+      };
+
+      setTimeout(() => {
+        navigateAfterAttempt(ctx);
       }, 900);
     } catch (err) {
       console.error("Attempt save error:", err);
@@ -235,20 +371,52 @@ export default function ActivityRunner({ lessonId }) {
 
   function renderActivity() {
     if (current.type === "mcq") {
-      if (current.layout === "sound") return <SoundActivity activity={current} onComplete={handleActivityComplete} />;
-      if (current.layout === "image") return <ImageActivity activity={current} onComplete={handleActivityComplete} />;
-      if (current.layout === "sequence") return <SequenceActivity activity={current} onComplete={handleActivityComplete} />;
-      if (current.layout === "choose") return <ChooseActivity activity={current} onComplete={handleActivityComplete} />;
+      if (current.layout === "sound")
+        return (
+          <SoundActivity
+            activity={current}
+            onComplete={handleActivityComplete}
+          />
+        );
+      if (current.layout === "image")
+        return (
+          <ImageActivity
+            activity={current}
+            onComplete={handleActivityComplete}
+          />
+        );
+      if (current.layout === "sequence")
+        return (
+          <SequenceActivity
+            activity={current}
+            onComplete={handleActivityComplete}
+          />
+        );
+      if (current.layout === "choose")
+        return (
+          <ChooseActivity
+            activity={current}
+            onComplete={handleActivityComplete}
+          />
+        );
     }
 
     if (current.type === "emotion") {
+      // Make sure forward-run progress is saved before emotion activity
       saveProgress(index, scores);
-      return <EmotionActivity activity={current} lang={lang} onComplete={handleActivityComplete} />;
+      return (
+        <EmotionActivity
+          activity={current}
+          lang={lang}
+          onComplete={handleActivityComplete}
+        />
+      );
     }
 
-    if (current.type === "asr") return <AsrActivity activity={current} onComplete={handleActivityComplete} />;
-
-    
+    if (current.type === "asr")
+      return (
+        <AsrActivity activity={current} onComplete={handleActivityComplete} />
+      );
 
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#ffffff] text-[#000000]">
@@ -256,6 +424,11 @@ export default function ActivityRunner({ lessonId }) {
       </div>
     );
   }
+
+  // Progress bar: forward shows real progress; review shows full
+  const forwardProgress =
+    ((index + 1) / (activities.length || 1)) * 100;
+  const progressValue = phase === "forward" ? forwardProgress : 100;
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-[#FFE5A3] flex flex-col justify-center">
@@ -265,26 +438,54 @@ export default function ActivityRunner({ lessonId }) {
           onClick={() => {
             saveProgress();
             // Deep-link current lesson & index to dashboard
-            const url = new URL("/student-dashboard", window.location.origin);
+            const url = new URL(
+              "/student-dashboard",
+              window.location.origin
+            );
             url.searchParams.set("resume_lesson", String(lessonId));
             url.searchParams.set("i", String(index));
             window.location.href = url.toString();
           }}
           className="p-1 hover:scale-110 transition-transform"
         >
-          <img src={exitIcon} alt="exit" className="w-6 h-6 sm:w-7 sm:h-7" />
+          <img
+            src={exitIcon}
+            alt="exit"
+            className="w-6 h-6 sm:w-7 sm:h-7"
+          />
         </button>
 
         <div className="flex-1 mx-5">
-          <ProgressBar progress={((index + 1) / (activities.length || 1)) * 100} />
+          <ProgressBar progress={progressValue} />
+          {phase === "review" && skippedIds.length > 0 && (
+            <p className="mt-1 text-center text-xs sm:text-sm text-[#1137A0] font-semibold">
+              {lang === "tl"
+                ? `Ulitin ang mga nilaktawang gawain (${reviewIndex + 1} / ${
+                    skippedIds.length
+                  })`
+                : `Reviewing skipped activities (${reviewIndex + 1} / ${
+                    skippedIds.length
+                  })`}
+            </p>
+          )}
         </div>
 
-        <img src={starIcon} alt="star" className="w-6 h-6 sm:w-7 sm:h-7" />
+        <img
+          src={starIcon}
+          alt="star"
+          className="w-6 h-6 sm:w-7 sm:h-7"
+        />
       </div>
 
       {/* MAIN CONTENT */}
       <AnimatePresence mode="wait">
-        <motion.div key={current.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
+        <motion.div
+          key={current.id + "-" + phase + "-" + reviewIndex}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          transition={{ duration: 0.3 }}
+        >
           {renderActivity()}
         </motion.div>
       </AnimatePresence>
@@ -306,10 +507,14 @@ export default function ActivityRunner({ lessonId }) {
               exit={{ scale: 0.9, opacity: 0 }}
               transition={{ duration: 0.1 }}
               className={`px-8 py-4 rounded-2xl shadow-2xl border-2 text-center backdrop-blur-md ${
-                feedback.type === "success" ? "bg-[#FFFCE8]/95 border-[#FFEAA7] text-[#270c9f]" : "bg-[#FFECEC]/95 border-[#FFC8C8] text-[#270c9f]"
+                feedback.type === "success"
+                  ? "bg-[#FFFCE8]/95 border-[#FFEAA7] text-[#270c9f]"
+                  : "bg-[#FFECEC]/95 border-[#FFC8C8] text-[#270c9f]"
               }`}
             >
-              <p className="font-bold text-2xl drop-shadow-sm">{feedback.message}</p>
+              <p className="font-bold text-2xl drop-shadow-sm">
+                {feedback.message}
+              </p>
             </motion.div>
           </motion.div>
         )}
