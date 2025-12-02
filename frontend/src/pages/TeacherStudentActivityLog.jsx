@@ -1,5 +1,5 @@
 // src/pages/TeacherStudentActivityLog.jsx
-// updated 12/02/2025 – Notion-style table, clean UI, best-score logic
+// updated 12/03/2025 – Notion-style table + Score colors + Clean modal
 
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
@@ -31,11 +31,9 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
     (async () => {
       setLoading(true);
       try {
-        let res = await apiFetch(`/teacher/student/${studentId}/activity`, {
-          token,
-        });
+        let res = await apiFetch(`/teacher/student/${studentId}/activity`, { token });
 
-        // fallback if empty
+        // fallback if main endpoint is empty
         if (!Array.isArray(res) || !res.length) {
           const [ov, pr] = await Promise.all([
             apiFetch(`/teacher/student/${studentId}/overview`, { token }),
@@ -53,9 +51,7 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
               duration_sec: ov.last_session_end
                 ? Math.max(
                     0,
-                    (new Date(ov.last_session_end) -
-                      new Date(ov.last_session_time)) /
-                      1000
+                    (new Date(ov.last_session_end) - new Date(ov.last_session_time)) / 1000
                   )
                 : undefined,
             });
@@ -67,7 +63,7 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
               ts: r.date || new Date().toISOString(),
               title: `Completed Lesson ${r.lesson ?? ""}`.trim(),
               detail: r.chapter ? `Chapter ${r.chapter}` : "Lesson completed",
-              score: typeof r.avg === "number" ? Math.round(r.avg) : undefined,
+              score: typeof r.avg === "number" ? Math.round(r.avg) : undefined
             });
           });
 
@@ -77,7 +73,7 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
               ts: r.date || new Date().toISOString(),
               title: "Speech practice",
               detail: "Pronunciation accuracy",
-              score: typeof r.avg === "number" ? Math.round(r.avg) : undefined,
+              score: typeof r.avg === "number" ? Math.round(r.avg) : undefined
             });
           });
 
@@ -87,7 +83,7 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
               ts: r.date || new Date().toISOString(),
               title: "Emotion recognition",
               detail: "Facial mimic accuracy",
-              score: typeof r.avg === "number" ? Math.round(r.avg) : undefined,
+              score: typeof r.avg === "number" ? Math.round(r.avg) : undefined
             });
           });
 
@@ -102,6 +98,7 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
         if (alive) setLoading(false);
       }
     })();
+
     return () => (alive = false);
   }, [studentId, token]);
 
@@ -109,13 +106,12 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
    * LOAD LESSON TABLE
    * ------------------------------------------------------------- */
   async function handleLessonClick(item) {
-    const lessonId = item.lesson_id;
-    if (!lessonId) return;
+    if (!item.lesson_id) return;
 
     setLessonLoading(true);
     try {
       const res = await apiFetch(
-        `/teacher/student/${studentId}/lesson/${lessonId}/table`,
+        `/teacher/student/${studentId}/lesson/${item.lesson_id}/table`,
         { token }
       );
       setLessonTable(res);
@@ -128,7 +124,7 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
   }
 
   /* -------------------------------------------------------------
-   * FILTER & GROUP
+   * FILTER + DATE GROUPING
    * ------------------------------------------------------------- */
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
@@ -164,8 +160,9 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
    * ------------------------------------------------------------- */
   return (
     <div className="flex flex-col gap-4">
-      {/* Header / search */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:bg-white md:rounded-2xl md:p-4 md:border md:border-gray-200 md:shadow-sm">
+
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 bg-white md:rounded-2xl md:p-4 md:border md:border-gray-200 md:shadow-sm">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-gray-600">Filter:</span>
           <Toggle value={type} onChange={setType} />
@@ -182,7 +179,7 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
         </div>
       </div>
 
-      {/* Log body */}
+      {/* Activity log */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm">
         {loading ? (
           <div className="p-8 text-gray-500">Loading activity…</div>
@@ -192,9 +189,7 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
           <div className="divide-y">
             {groups.map(([dateLabel, rows], gi) => (
               <section key={gi} className="p-4">
-                <h3 className="text-sm font-semibold text-gray-500 mb-3">
-                  {dateLabel}
-                </h3>
+                <h3 className="text-sm font-semibold text-gray-500 mb-3">{dateLabel}</h3>
                 <ul className="flex flex-col gap-3">
                   {rows.map((it, i) => (
                     <ActivityRow
@@ -211,24 +206,21 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
       </div>
 
       {/* -------------------------------------------------------------
-       * LESSON MODAL
-       * ------------------------------------------------------------- */}
+         LESSON MODAL
+         ------------------------------------------------------------- */}
       {lessonTable && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl p-4 md:p-6 overflow-hidden">
 
-            <h2 className="text-xl md:text-2xl font-bold mb-4 text-center md:text-left">
-              {lessonTable.lesson_title ||
-                `Lesson ${lessonTable.lesson_id}`} – Activity Breakdown
+            <h2 className="text-xl md:text-2xl font-bold mb-4">
+              {lessonTable.lesson_title || `Lesson ${lessonTable.lesson_id}`} – Activity Breakdown
             </h2>
 
             {lessonLoading && (
-              <div className="text-sm text-gray-500 mb-3">
-                Loading lesson details…
-              </div>
+              <div className="text-sm text-gray-500 mb-3">Loading lesson details…</div>
             )}
 
-            {/* Notion-Style Table */}
+            {/* Notion-style table */}
             <div className="overflow-x-auto rounded-xl border">
               <table className="min-w-full text-sm">
                 <thead>
@@ -248,36 +240,24 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
                         key={i}
                         className="border-b last:border-0 hover:bg-gray-50 transition-colors"
                       >
-                        <td className="p-3 font-medium text-gray-700">
-                          Activity {i + 1}
-                        </td>
+                        <td className="p-3 font-medium text-gray-700">Activity {i + 1}</td>
 
-                        <td
-                          className="p-3 max-w-[200px] md:max-w-none truncate text-gray-800"
-                          title={row.question}
-                        >
+                        <td className="p-3 max-w-[200px] md:max-w-none truncate text-gray-800" title={row.question}>
                           {row.question || "—"}
                         </td>
 
-                        <td className="p-3 text-gray-600">
-                          {row.spiral_tag || "—"}
-                        </td>
+                        <td className="p-3 text-gray-600">{row.spiral_tag || "—"}</td>
 
-                        <td className="p-3 text-center text-gray-700">
-                          {row.attempts}
-                        </td>
+                        <td className="p-3 text-center text-gray-700">{row.attempts}</td>
 
-                        <td className="p-3 text-center font-semibold text-gray-800">
-                          {row.score != null ? Math.round(row.score) : "—"}
+                        <td className="p-3 text-center">
+                          {row.score != null ? <ScorePill score={row.score} /> : "—"}
                         </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td
-                        colSpan={5}
-                        className="p-4 text-center text-gray-500"
-                      >
+                      <td colSpan={5} className="p-4 text-center text-gray-500">
                         No attempts yet for this lesson.
                       </td>
                     </tr>
@@ -286,24 +266,24 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
               </table>
             </div>
 
-            {/* Lesson Avg */}
+            {/* Lesson average */}
             <div className="flex justify-end mt-4 text-base md:text-lg font-bold text-blue-600">
               Lesson Avg:&nbsp;
               {lessonTable.lesson_avg != null
-                ? `${lessonTable.lesson_avg.toFixed?.(1) ||
-                    lessonTable.lesson_avg}%`
+                ? `${lessonTable.lesson_avg.toFixed?.(1) || lessonTable.lesson_avg}%`
                 : "—"}
             </div>
 
-            {/* Close button */}
-            <div className="mt-6 flex justify-center md:justify-end">
+            {/* Close */}
+            <div className="mt-6 flex justify-end">
               <button
                 onClick={() => setLessonTable(null)}
-                className="px-6 py-2 bg-[#2E4bff] text-white rounded-lg hover:brightness-110 text-sm md:text-base"
+                className="px-6 py-2 bg-[#2E4bff] text-white rounded-lg hover:brightness-110"
               >
                 Close
               </button>
             </div>
+
           </div>
         </div>
       )}
@@ -328,9 +308,7 @@ function Toggle({ value, onChange }) {
           key={o.key}
           onClick={() => onChange(o.key)}
           className={`px-3 py-1.5 text-sm rounded-lg transition ${
-            value === o.key
-              ? "bg-[#2E4bff] text-white"
-              : "text-gray-600 hover:bg-white"
+            value === o.key ? "bg-[#2E4bff] text-white" : "text-gray-600 hover:bg-white"
           }`}
         >
           {o.label}
@@ -344,15 +322,10 @@ function Toggle({ value, onChange }) {
  * ACTIVITY ROW
  * ------------------------------------------------------------- */
 function ActivityRow({ item, onLessonClick }) {
-  const time = new Date(item.ts).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const time = new Date(item.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   const chip = (label) => (
-    <span className="px-2 py-0.5 text-xs rounded-lg border bg-[#F9FAFB] text-gray-700">
-      {label}
-    </span>
+    <span className="px-2 py-0.5 text-xs rounded-lg border bg-[#F9FAFB] text-gray-700">{label}</span>
   );
 
   const icon = (() => {
@@ -370,38 +343,44 @@ function ActivityRow({ item, onLessonClick }) {
     }
   })();
 
-  const clickable = item.type === "LESSON";
-
   return (
     <li
       className={`flex items-start gap-3 ${
-        clickable ? "cursor-pointer hover:bg-gray-50 rounded-xl p-2 -m-2" : ""
+        item.type === "LESSON" ? "cursor-pointer hover:bg-gray-50 rounded-xl p-2 -m-2" : ""
       }`}
-      onClick={() => clickable && onLessonClick(item)}
+      onClick={() => item.type === "LESSON" && onLessonClick(item)}
     >
-      <div className="w-9 h-9 rounded-xl bg-[#EAF0FF] flex items-center justify-center shrink-0">
-        {icon}
-      </div>
+      <div className="w-9 h-9 rounded-xl bg-[#EAF0FF] flex items-center justify-center shrink-0">{icon}</div>
 
       <div className="flex-1 min-w-0">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-          <div className="min-w-0">
-            <div className="font-semibold text-[#111] truncate">
-              {item.title || item.type}
-            </div>
-            {item.detail && (
-              <div className="text-sm text-gray-600 truncate">{item.detail}</div>
-            )}
+          <div>
+            <div className="font-semibold text-[#111] truncate">{item.title}</div>
+            {item.detail && <div className="text-sm text-gray-600 truncate">{item.detail}</div>}
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
             {typeof item.score === "number" && chip(`Score ${item.score}%`)}
-            {typeof item.duration_sec === "number" &&
-              chip(`${Math.round(item.duration_sec / 60)}m`)}
+            {typeof item.duration_sec === "number" && chip(`${Math.round(item.duration_sec / 60)}m`)}
             <span className="text-xs text-gray-500">{time}</span>
           </div>
         </div>
       </div>
     </li>
   );
+}
+
+/* -------------------------------------------------------------
+ * SCORE PILL (GREEN = mastered, YELLOW = developing, RED = needs support)
+ * ------------------------------------------------------------- */
+function ScorePill({ score }) {
+  const val = Math.round(score);
+  let classes =
+    "px-3 py-1 text-xs font-bold rounded-full text-white bg-gray-400";
+
+  if (val >= 80) classes = "px-3 py-1 text-xs font-bold rounded-full bg-green-500 text-white";
+  else if (val >= 60) classes = "px-3 py-1 text-xs font-bold rounded-full bg-yellow-400 text-gray-900";
+  else classes = "px-3 py-1 text-xs font-bold rounded-full bg-red-500 text-white";
+
+  return <span className={classes}>{val}%</span>;
 }

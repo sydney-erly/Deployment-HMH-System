@@ -1920,27 +1920,13 @@ def student_activity_log(students_id):
 @require_teacher
 def student_lesson_table(students_id, lesson_id):
     """
-    Returns an Excel-style table for one lesson:
+    Returns per-activity breakdown for one lesson:
 
-      question | spiral_tag | attempts | score
-
-    Where:
-      - Score = BEST score across all attempts for that activity
-      - Attempts = total number of attempts for that activity
-      - lesson_avg = average of BEST scores across all activities
+      Activity | Question | Spiral Tag | Attempts | Score (best)
     """
     sb = supabase_client.client
 
-    # 0) Fetch lesson title (for nicer modal heading)
-    lesson_row, _ = sb_exec(
-        sb.table("lessons")
-          .select("title_en")
-          .eq("id", lesson_id)
-          .maybe_single()
-    )
-    lesson_title = lesson_row.get("title_en") if lesson_row else f"Lesson {lesson_id}"
-
-    # 1) All activities for this lesson (keep sort_order)
+    # 1) Fetch activities for the lesson
     act_rows = sb_safe_select(
         sb.table("activities")
           .select("id, sort_order, prompt_en, spiral_tag")
@@ -1951,14 +1937,14 @@ def student_lesson_table(students_id, lesson_id):
     if not act_rows:
         return jsonify({
             "lesson_id": lesson_id,
-            "lesson_title": lesson_title,
+            "lesson_title": None,
             "lesson_avg": None,
             "rows": []
         }), 200
 
     act_ids = [int(a["id"]) for a in act_rows]
 
-    # 2) All attempts for those activities for this student
+    # 2) Fetch attempts for those activities
     att_rows = sb_safe_select(
         sb.table("activity_attempts")
           .select("activities_id, score, created_at")
@@ -1967,55 +1953,58 @@ def student_lesson_table(students_id, lesson_id):
           .order("created_at", desc=True)
     )
 
-    bucket = defaultdict(list)  # activities_id -> list[score]
+    from collections import defaultdict
+    bucket = defaultdict(list)  # activity_id -> [scores]
 
     for a in att_rows:
         aid = int(a["activities_id"])
         sc = a.get("score")
-        if sc is None:
-            continue
-        try:
+        if sc is not None:
             bucket[aid].append(float(sc))
-        except Exception:
-            continue
 
+    # compute rows
     rows = []
-    best_scores_for_lesson = []
+    avg_sum = 0
+    avg_n = 0
 
     for a in act_rows:
         aid = int(a["id"])
         scores = bucket.get(aid, [])
 
         attempts = len(scores)
-        best = max(scores) if scores else None
+        latest = scores[0] if scores else None
+        avg = (sum(scores) / attempts) if attempts else None
 
-        if best is not None:
-            best_scores_for_lesson.append(best)
+        if avg is not None:
+            avg_sum += avg
+            avg_n += 1
 
         rows.append({
             "activity_id": aid,
             "question": a.get("prompt_en"),
             "spiral_tag": a.get("spiral_tag"),
             "attempts": attempts,
-            "score": best,  # BEST score only
+            "score": latest,
+            "average": avg
         })
 
-    lesson_avg = (
-        round(sum(best_scores_for_lesson) / max(len(best_scores_for_lesson), 1), 1)
-        if best_scores_for_lesson else None
+    # fetch lesson title
+    lesson_row, _ = sb_exec(
+        sb.table("lessons")
+          .select("title_en")
+          .eq("id", lesson_id)
+          .maybe_single()
     )
+    lesson_title = lesson_row.get("title_en") if lesson_row else None
+
+    lesson_avg = round(avg_sum / avg_n, 1) if avg_n else None
 
     return jsonify({
         "lesson_id": lesson_id,
         "lesson_title": lesson_title,
         "lesson_avg": lesson_avg,
-        "rows": rows,
+        "rows": rows
     }), 200
-
-
-
-
-
 
 
 
