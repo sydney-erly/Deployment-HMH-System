@@ -1,6 +1,5 @@
 // src/pages/TeacherStudentActivityLog.jsx
-// updated with Lesson drilldown modal (question | spiral_tag | attempts | score | average)
-// updated 12/02/2025
+// updated 12/02/2025 – Notion-style table, clean UI, best-score logic
 
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
@@ -20,20 +19,24 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
   const [q, setQ] = useState("");
   const [type, setType] = useState("ALL"); // ALL | LESSON | EMOTION | SPEECH
 
-  // 🔹 New: state for lesson drilldown modal
+  // Lesson drilldown modal
   const [lessonTable, setLessonTable] = useState(null);
   const [lessonLoading, setLessonLoading] = useState(false);
 
+  /* -------------------------------------------------------------
+   * FETCH ACTIVITY LOG
+   * ------------------------------------------------------------- */
   useEffect(() => {
     let alive = true;
     (async () => {
       setLoading(true);
       try {
-        // Try main activity endpoint first
-        let res = await apiFetch(`/teacher/student/${studentId}/activity`, { token });
+        let res = await apiFetch(`/teacher/student/${studentId}/activity`, {
+          token,
+        });
 
+        // fallback if empty
         if (!Array.isArray(res) || !res.length) {
-          // fallback: fetch overview + progress
           const [ov, pr] = await Promise.all([
             apiFetch(`/teacher/student/${studentId}/overview`, { token }),
             apiFetch(`/teacher/student/${studentId}/progress`, { token }),
@@ -41,7 +44,6 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
 
           const synth = [];
 
-          // Session data
           if (ov?.last_session_time) {
             synth.push({
               type: "SESSION",
@@ -59,47 +61,36 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
             });
           }
 
-          // Lessons (from lesson_avg)
           (pr?.lesson_avg ?? []).forEach((r) => {
             synth.push({
               type: "LESSON",
-              ts: r.date || r.day || r.ts || new Date().toISOString(),
+              ts: r.date || new Date().toISOString(),
               title: `Completed Lesson ${r.lesson ?? ""}`.trim(),
               detail: r.chapter ? `Chapter ${r.chapter}` : "Lesson completed",
-              score:
-                typeof r.avg === "number" ? Math.round(r.avg) : undefined,
-              // no lesson_id here because this is just fallback mode
+              score: typeof r.avg === "number" ? Math.round(r.avg) : undefined,
             });
           });
 
-          // Speech practice
           (pr?.speech ?? []).forEach((r) => {
             synth.push({
               type: "SPEECH",
-              ts: r.date || r.day || r.ts || new Date().toISOString(),
+              ts: r.date || new Date().toISOString(),
               title: "Speech practice",
               detail: "Pronunciation accuracy",
-              score:
-                typeof r.avg === "number" ? Math.round(r.avg) : undefined,
+              score: typeof r.avg === "number" ? Math.round(r.avg) : undefined,
             });
           });
 
-          // Emotion recognition
-          const emoSrc =
-            (pr?.emotion_trend?.length ? pr.emotion_trend : pr?.emotion) ??
-            [];
-          emoSrc.forEach((r) => {
+          (pr?.emotion ?? []).forEach((r) => {
             synth.push({
               type: "EMOTION",
-              ts: r.date || r.day || r.ts || new Date().toISOString(),
+              ts: r.date || new Date().toISOString(),
               title: "Emotion recognition",
               detail: "Facial mimic accuracy",
-              score:
-                typeof r.avg === "number" ? Math.round(r.avg) : undefined,
+              score: typeof r.avg === "number" ? Math.round(r.avg) : undefined,
             });
           });
 
-          // Sort by newest first
           res = synth.sort((a, b) => new Date(b.ts) - new Date(a.ts));
         }
 
@@ -111,19 +102,16 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
         if (alive) setLoading(false);
       }
     })();
-
-    return () => {
-      alive = false;
-    };
+    return () => (alive = false);
   }, [studentId, token]);
 
-  // 🔹 Handler: load lesson table when a completed lesson is clicked
+  /* -------------------------------------------------------------
+   * LOAD LESSON TABLE
+   * ------------------------------------------------------------- */
   async function handleLessonClick(item) {
-    const lessonId = item.lesson_id; // comes from backend activity route
-    if (!lessonId) {
-      console.warn("Lesson click without lesson_id, ignoring.", item);
-      return;
-    }
+    const lessonId = item.lesson_id;
+    if (!lessonId) return;
+
     setLessonLoading(true);
     try {
       const res = await apiFetch(
@@ -133,13 +121,15 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
       setLessonTable(res);
     } catch (e) {
       console.error("Failed to fetch lesson table:", e);
-      alert("Could not load lesson details. Please try again.");
+      alert("Could not load lesson details.");
     } finally {
       setLessonLoading(false);
     }
   }
 
-  // ---- Filters & grouping ----
+  /* -------------------------------------------------------------
+   * FILTER & GROUP
+   * ------------------------------------------------------------- */
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
     return items
@@ -169,15 +159,13 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
     return Array.from(map.entries());
   }, [filtered]);
 
+  /* -------------------------------------------------------------
+   * UI
+   * ------------------------------------------------------------- */
   return (
     <div className="flex flex-col gap-4">
-      {/* Header / Controls */}
-      <div
-        className={
-          "flex flex-col md:flex-row md:items-center md:justify-between gap-3 " +
-          "md:bg-white md:rounded-2xl md:p-4 md:border md:border-gray-200 md:shadow-sm"
-        }
-      >
+      {/* Header / search */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:bg-white md:rounded-2xl md:p-4 md:border md:border-gray-200 md:shadow-sm">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-gray-600">Filter:</span>
           <Toggle value={type} onChange={setType} />
@@ -194,7 +182,7 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
         </div>
       </div>
 
-      {/* Body */}
+      {/* Log body */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm">
         {loading ? (
           <div className="p-8 text-gray-500">Loading activity…</div>
@@ -222,12 +210,16 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
         )}
       </div>
 
-      {/* 🔹 Lesson drilldown modal */}
+      {/* -------------------------------------------------------------
+       * LESSON MODAL
+       * ------------------------------------------------------------- */}
       {lessonTable && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl p-6">
-            <h2 className="text-2xl font-bold mb-4">
-              Lesson {lessonTable.lesson_id} – Activity Breakdown
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl p-4 md:p-6 overflow-hidden">
+
+            <h2 className="text-xl md:text-2xl font-bold mb-4 text-center md:text-left">
+              {lessonTable.lesson_title ||
+                `Lesson ${lessonTable.lesson_id}`} – Activity Breakdown
             </h2>
 
             {lessonLoading && (
@@ -236,64 +228,78 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
               </div>
             )}
 
-            {/* Excel-style layout */}
-            <div className="border rounded-xl overflow-hidden">
-              <div className="grid grid-cols-6 text-xs font-semibold bg-gray-100 border-b">
-                <div className="p-2">Activity</div>
-                <div className="p-2 col-span-2">Question</div>
-                <div className="p-2">Spiral Tag</div>
-                <div className="p-2 text-center">Attempts</div>
-                <div className="p-2 text-center">Score / Avg</div>
-              </div>
+            {/* Notion-Style Table */}
+            <div className="overflow-x-auto rounded-xl border">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-100 text-gray-700 text-xs md:text-sm font-semibold border-b">
+                    <th className="p-3 text-left">Activity</th>
+                    <th className="p-3 text-left">Question</th>
+                    <th className="p-3 text-left">Type</th>
+                    <th className="p-3 text-center">Attempts</th>
+                    <th className="p-3 text-center">Score</th>
+                  </tr>
+                </thead>
 
-              {lessonTable.rows && lessonTable.rows.length > 0 ? (
-                lessonTable.rows.map((row, i) => (
-                  <div
-                    key={i}
-                    className="grid grid-cols-6 text-sm border-b last:border-b-0 hover:bg-gray-50"
-                  >
-                    <div className="p-2 font-medium">Activity {i + 1}</div>
-                    <div className="p-2 col-span-2">
-                      {row.question || "—"}
-                    </div>
-                    <div className="p-2">
-                      {row.spiral_tag && row.spiral_tag !== ""
-                        ? row.spiral_tag
-                        : "—"}
-                    </div>
-                    <div className="p-2 text-center">{row.attempts}</div>
-                    <div className="p-2 text-center">
-                      {row.score != null ? Math.round(row.score) : "—"} /{" "}
-                      {row.average != null ? row.average.toFixed?.(1) ?? row.average : "—"}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="p-4 text-sm text-gray-500">
-                  No attempts yet for this lesson.
-                </div>
-              )}
+                <tbody>
+                  {lessonTable.rows && lessonTable.rows.length > 0 ? (
+                    lessonTable.rows.map((row, i) => (
+                      <tr
+                        key={i}
+                        className="border-b last:border-0 hover:bg-gray-50 transition-colors"
+                      >
+                        <td className="p-3 font-medium text-gray-700">
+                          Activity {i + 1}
+                        </td>
+
+                        <td
+                          className="p-3 max-w-[200px] md:max-w-none truncate text-gray-800"
+                          title={row.question}
+                        >
+                          {row.question || "—"}
+                        </td>
+
+                        <td className="p-3 text-gray-600">
+                          {row.spiral_tag || "—"}
+                        </td>
+
+                        <td className="p-3 text-center text-gray-700">
+                          {row.attempts}
+                        </td>
+
+                        <td className="p-3 text-center font-semibold text-gray-800">
+                          {row.score != null ? Math.round(row.score) : "—"}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="p-4 text-center text-gray-500"
+                      >
+                        No attempts yet for this lesson.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
 
-            {/* Footer overall average */}
-            {lessonTable.rows && lessonTable.rows.length > 0 && (
-              <div className="flex justify-end mt-4 text-base font-bold text-blue-600">
-                Lesson Avg:&nbsp;
-                {(() => {
-                  const vals = lessonTable.rows
-                    .map((r) => r.average)
-                    .filter((v) => typeof v === "number");
-                  if (!vals.length) return "—";
-                  const sum = vals.reduce((a, b) => a + b, 0);
-                  return `${(sum / vals.length).toFixed(1)}%`;
-                })()}
-              </div>
-            )}
+            {/* Lesson Avg */}
+            <div className="flex justify-end mt-4 text-base md:text-lg font-bold text-blue-600">
+              Lesson Avg:&nbsp;
+              {lessonTable.lesson_avg != null
+                ? `${lessonTable.lesson_avg.toFixed?.(1) ||
+                    lessonTable.lesson_avg}%`
+                : "—"}
+            </div>
 
-            <div className="mt-6 flex justify-end">
+            {/* Close button */}
+            <div className="mt-6 flex justify-center md:justify-end">
               <button
                 onClick={() => setLessonTable(null)}
-                className="px-5 py-2 bg-[#2E4bff] text-white rounded-lg hover:brightness-110 text-sm"
+                className="px-6 py-2 bg-[#2E4bff] text-white rounded-lg hover:brightness-110 text-sm md:text-base"
               >
                 Close
               </button>
@@ -305,8 +311,9 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
   );
 }
 
-/* ---------- UI Bits ---------- */
-
+/* -------------------------------------------------------------
+ * TOGGLE FILTER BUTTONS
+ * ------------------------------------------------------------- */
 function Toggle({ value, onChange }) {
   const options = [
     { key: "ALL", label: "All" },
@@ -316,26 +323,26 @@ function Toggle({ value, onChange }) {
   ];
   return (
     <div className="bg-[#F6F7FB] border border-gray-200 rounded-xl p-1 flex">
-      {options.map((o) => {
-        const active = value === o.key;
-        return (
-          <button
-            key={o.key}
-            onClick={() => onChange(o.key)}
-            className={`px-3 py-1.5 text-sm rounded-lg transition ${
-              active
-                ? "bg-[#2E4bff] text-white"
-                : "text-gray-600 hover:bg-white"
-            }`}
-          >
-            {o.label}
-          </button>
-        );
-      })}
+      {options.map((o) => (
+        <button
+          key={o.key}
+          onClick={() => onChange(o.key)}
+          className={`px-3 py-1.5 text-sm rounded-lg transition ${
+            value === o.key
+              ? "bg-[#2E4bff] text-white"
+              : "text-gray-600 hover:bg-white"
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
     </div>
   );
 }
 
+/* -------------------------------------------------------------
+ * ACTIVITY ROW
+ * ------------------------------------------------------------- */
 function ActivityRow({ item, onLessonClick }) {
   const time = new Date(item.ts).toLocaleTimeString([], {
     hour: "2-digit",
@@ -365,22 +372,17 @@ function ActivityRow({ item, onLessonClick }) {
 
   const clickable = item.type === "LESSON";
 
-  const handleClick = () => {
-    if (clickable && typeof onLessonClick === "function") {
-      onLessonClick(item);
-    }
-  };
-
   return (
     <li
       className={`flex items-start gap-3 ${
         clickable ? "cursor-pointer hover:bg-gray-50 rounded-xl p-2 -m-2" : ""
       }`}
-      onClick={handleClick}
+      onClick={() => clickable && onLessonClick(item)}
     >
       <div className="w-9 h-9 rounded-xl bg-[#EAF0FF] flex items-center justify-center shrink-0">
         {icon}
       </div>
+
       <div className="flex-1 min-w-0">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
           <div className="min-w-0">
@@ -388,11 +390,10 @@ function ActivityRow({ item, onLessonClick }) {
               {item.title || item.type}
             </div>
             {item.detail && (
-              <div className="text-sm text-gray-600 truncate">
-                {item.detail}
-              </div>
+              <div className="text-sm text-gray-600 truncate">{item.detail}</div>
             )}
           </div>
+
           <div className="flex items-center gap-2 shrink-0">
             {typeof item.score === "number" && chip(`Score ${item.score}%`)}
             {typeof item.duration_sec === "number" &&
