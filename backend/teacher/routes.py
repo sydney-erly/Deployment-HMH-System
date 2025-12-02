@@ -1353,8 +1353,6 @@ def update_student(students_id):
         return jsonify({"error": "Not found"}), 404
 
 
-
-
     _inject_resolved_photo(updated)
     return jsonify(updated)
 
@@ -1441,7 +1439,6 @@ def student_progress(students_id):
 
 
 
-
     # fetch activity types for those ids
     act_ids = sorted({int(r["activities_id"]) for r in att_rows if r.get("activities_id") is not None})
     act_type = {}
@@ -1453,8 +1450,6 @@ def student_progress(students_id):
             )
             for a in rows:
                 act_type[int(a["id"])] = (a.get("type") or "").lower()
-
-
 
 
     speech_day = {}
@@ -1480,12 +1475,6 @@ def student_progress(students_id):
 
     speech = [{"date": d, "avg": round(v["sum"]/max(1, v["n"]), 1)}
             for d, v in sorted(speech_day.items())]
-
-
-
-
-
-
 
 
     # ---- Emotion trend + breakdown (from emotion_metrics only) ----
@@ -1530,8 +1519,6 @@ def student_progress(students_id):
     ]
 
 
-
-
     # ---- Engagement (last 30d) from sessions with fallback) ----
     since_sessions = (now_ph() - timedelta(days=30)).astimezone(timezone.utc).isoformat()
     sess_rows = sb_safe_select(
@@ -1565,11 +1552,6 @@ def student_progress(students_id):
 
     engagement = [{"date": d, "value": round(v["sum"]/max(1, v["n"]), 1)}
                 for d, v in sorted(bucket.items())]
-
-
-
-
-
 
 
 
@@ -1660,7 +1642,6 @@ def student_progress(students_id):
 
 
 
-
     payload = {
         "speech": speech,
         "emotion": emotion,
@@ -1678,14 +1659,6 @@ def student_progress(students_id):
 
 
 
-
-
-
-
-
-
-
-
 @teacher_bp.get("/student/<uuid:students_id>/recommendations")
 @require_teacher
 def student_recommendations(students_id):
@@ -1695,9 +1668,6 @@ def student_recommendations(students_id):
           .select("lesson_id, lesson_avg")
           .eq("students_id", str(students_id))
     )
-
-
-
 
     if not rows:
         return jsonify({
@@ -1709,8 +1679,6 @@ def student_recommendations(students_id):
         })
 
 
-
-
     # Pick two lowest lessons as next recommendations
     sorted_rows = sorted(
         [{"lesson_id": r["lesson_id"], "avg": float(r.get("lesson_avg") or 0)} for r in rows if r.get("lesson_id") is not None],
@@ -1719,13 +1687,8 @@ def student_recommendations(students_id):
     next_lessons = [r["lesson_id"] for r in sorted_rows[:2]]
 
 
-
-
     # Focus areas = lessons with <60%
     focus_areas = [r["lesson_id"] for r in rows if float(r.get("lesson_avg") or 0) < 60]
-
-
-
 
     overall_avg = sum(float(r.get("lesson_avg") or 0) for r in rows) / max(len(rows), 1)
     remark = "On track" if overall_avg >= 60 else "Needs support"
@@ -1740,11 +1703,6 @@ def student_recommendations(students_id):
             "focus_areas": list(dict.fromkeys(focus_areas)),  # unique
         }
     })
-
-
-
-
-
 
 
 
@@ -1889,47 +1847,38 @@ def student_activity_log(students_id):
             if status != "completed":
                 continue
 
-
-
-
             lesson_id = r.get("lesson_id")
             title_en, chapter_title = None, None
             if lesson_id is not None:
                 lesson_row, _ = sb_exec(
-                    sb.table("lessons").select("title_en, chapter_id").eq("id", lesson_id).maybe_single()
+                    sb.table("lessons")
+                    .select("title_en, chapter_id")
+                    .eq("id", lesson_id)
+                    .maybe_single()
                 )
                 if lesson_row:
                     title_en = lesson_row.get("title_en")
                     chap_row, _ = sb_exec(
-                        sb.table("chapters").select("title_en").eq("id", lesson_row.get("chapter_id")).maybe_single()
+                        sb.table("chapters")
+                        .select("title_en")
+                        .eq("id", lesson_row.get("chapter_id"))
+                        .maybe_single()
                     )
                     if chap_row:
                         chapter_title = chap_row.get("title_en")
-
-
-
 
             # Use best_score (numeric) if present
             score_val = r.get("best_score")
             score_rounded = round(score_val) if isinstance(score_val, (int, float)) else None
 
-
-
-
             events.append({
                 "type": "LESSON",
                 "ts": r.get("updated_at"),
+                "lesson_id": lesson_id,  # 🔹 add this
                 "title": f"Completed Lesson {title_en or lesson_id}",
                 "detail": f"Chapter {chapter_title}" if chapter_title else "Lesson completed",
-                "score": score_rounded
+                "score": score_rounded,
             })
-
-
-
-
-
-
-
 
         # Activity attempts (speech + emotion)
         attempts = sb_safe_select(
@@ -1959,20 +1908,84 @@ def student_activity_log(students_id):
             })
 
 
-
-
-
-
         events.sort(key=lambda x: x.get("ts") or "", reverse=True)
         return jsonify(events), 200
-
-
 
 
     except Exception as e:
         print("🔥 Error building activity log:", e)
         return jsonify({"error": str(e)}), 500
 
+@teacher_bp.get("/student/<uuid:students_id>/lesson/<int:lesson_id>/table")
+@require_teacher
+def student_lesson_table(students_id, lesson_id):
+    """
+    Returns an Excel-style table for one lesson:
+
+      question | spiral_tag | attempts | score | average
+
+    - question   → activities.prompt_en
+    - spiral_tag → activities.spiral_tag
+    - attempts   → number of attempts for that activity
+    - score      → latest attempt score
+    - average    → average of all attempt scores
+    """
+    sb = supabase_client.client
+
+    # 1) All activities for this lesson (keep sort_order)
+    act_rows = sb_safe_select(
+        sb.table("activities")
+          .select("id, sort_order, prompt_en, spiral_tag")
+          .eq("lesson_id", lesson_id)
+          .order("sort_order")
+    )
+
+    if not act_rows:
+        return jsonify({"lesson_id": lesson_id, "rows": []}), 200
+
+    act_ids = [int(a["id"]) for a in act_rows]
+
+    # 2) All attempts for those activities for this student
+    att_rows = sb_safe_select(
+        sb.table("activity_attempts")
+          .select("activities_id, score, created_at")
+          .eq("students_id", str(students_id))
+          .in_("activities_id", act_ids)
+          .order("created_at", desc=True)
+    )
+
+    from collections import defaultdict
+    bucket = defaultdict(list)  # activities_id -> list of scores (latest first)
+
+    for a in att_rows:
+        aid = int(a["activities_id"])
+        sc = a.get("score")
+        if sc is None:
+            continue
+        bucket[aid].append(float(sc))
+
+    rows = []
+    for a in act_rows:
+        aid = int(a["id"])
+        scores = bucket.get(aid, [])
+
+        attempts = len(scores)
+        latest = scores[0] if scores else None
+        avg = (sum(scores) / attempts) if attempts else None
+
+        rows.append({
+            "activity_id": aid,
+            "question": a.get("prompt_en"),
+            "spiral_tag": a.get("spiral_tag"),
+            "attempts": attempts,
+            "score": latest,
+            "average": round(avg, 1) if avg is not None else None,
+        })
+
+    return jsonify({
+        "lesson_id": lesson_id,
+        "rows": rows,
+    }), 200
 
 
 

@@ -1,11 +1,11 @@
 // src/pages/TeacherStudentActivityLog.jsx
-// updated with Emotion icon fix and cleaned imports
-// updated 11/20/2025 04:28PM
+// updated with Lesson drilldown modal (question | spiral_tag | attempts | score | average)
+// updated 12/02/2025
 
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/api";
-import { FiClock, FiSearch, FiSmile } from "react-icons/fi";
-import { IoHappyOutline } from "react-icons/io5"; // NEW EMOTION ICON
+import { FiClock, FiSearch } from "react-icons/fi";
+import { IoHappyOutline } from "react-icons/io5";
 import { PiStudentBold } from "react-icons/pi";
 import { SiGoogleanalytics } from "react-icons/si";
 
@@ -19,6 +19,10 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [type, setType] = useState("ALL"); // ALL | LESSON | EMOTION | SPEECH
+
+  // 🔹 New: state for lesson drilldown modal
+  const [lessonTable, setLessonTable] = useState(null);
+  const [lessonLoading, setLessonLoading] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -45,19 +49,26 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
               title: "Session started",
               detail: ov.last_mood ? `Mood: ${ov.last_mood}` : "",
               duration_sec: ov.last_session_end
-                ? Math.max(0, (new Date(ov.last_session_end) - new Date(ov.last_session_time)) / 1000)
+                ? Math.max(
+                    0,
+                    (new Date(ov.last_session_end) -
+                      new Date(ov.last_session_time)) /
+                      1000
+                  )
                 : undefined,
             });
           }
 
-          // Lessons
+          // Lessons (from lesson_avg)
           (pr?.lesson_avg ?? []).forEach((r) => {
             synth.push({
               type: "LESSON",
               ts: r.date || r.day || r.ts || new Date().toISOString(),
               title: `Completed Lesson ${r.lesson ?? ""}`.trim(),
               detail: r.chapter ? `Chapter ${r.chapter}` : "Lesson completed",
-              score: typeof r.avg === "number" ? Math.round(r.avg) : undefined,
+              score:
+                typeof r.avg === "number" ? Math.round(r.avg) : undefined,
+              // no lesson_id here because this is just fallback mode
             });
           });
 
@@ -68,19 +79,23 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
               ts: r.date || r.day || r.ts || new Date().toISOString(),
               title: "Speech practice",
               detail: "Pronunciation accuracy",
-              score: typeof r.avg === "number" ? Math.round(r.avg) : undefined,
+              score:
+                typeof r.avg === "number" ? Math.round(r.avg) : undefined,
             });
           });
 
           // Emotion recognition
-          const emoSrc = (pr?.emotion_trend?.length ? pr.emotion_trend : pr?.emotion) ?? [];
+          const emoSrc =
+            (pr?.emotion_trend?.length ? pr.emotion_trend : pr?.emotion) ??
+            [];
           emoSrc.forEach((r) => {
             synth.push({
               type: "EMOTION",
               ts: r.date || r.day || r.ts || new Date().toISOString(),
               title: "Emotion recognition",
               detail: "Facial mimic accuracy",
-              score: typeof r.avg === "number" ? Math.round(r.avg) : undefined,
+              score:
+                typeof r.avg === "number" ? Math.round(r.avg) : undefined,
             });
           });
 
@@ -102,6 +117,28 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
     };
   }, [studentId, token]);
 
+  // 🔹 Handler: load lesson table when a completed lesson is clicked
+  async function handleLessonClick(item) {
+    const lessonId = item.lesson_id; // comes from backend activity route
+    if (!lessonId) {
+      console.warn("Lesson click without lesson_id, ignoring.", item);
+      return;
+    }
+    setLessonLoading(true);
+    try {
+      const res = await apiFetch(
+        `/teacher/student/${studentId}/lesson/${lessonId}/table`,
+        { token }
+      );
+      setLessonTable(res);
+    } catch (e) {
+      console.error("Failed to fetch lesson table:", e);
+      alert("Could not load lesson details. Please try again.");
+    } finally {
+      setLessonLoading(false);
+    }
+  }
+
   // ---- Filters & grouping ----
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
@@ -110,7 +147,9 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
       .filter((it) =>
         !qq
           ? true
-          : [it.title, it.detail, it.type].filter(Boolean).some((s) => String(s).toLowerCase().includes(qq))
+          : [it.title, it.detail, it.type]
+              .filter(Boolean)
+              .some((s) => String(s).toLowerCase().includes(qq))
       )
       .sort((a, b) => new Date(b.ts) - new Date(a.ts));
   }, [items, type, q]);
@@ -165,10 +204,16 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
           <div className="divide-y">
             {groups.map(([dateLabel, rows], gi) => (
               <section key={gi} className="p-4">
-                <h3 className="text-sm font-semibold text-gray-500 mb-3">{dateLabel}</h3>
+                <h3 className="text-sm font-semibold text-gray-500 mb-3">
+                  {dateLabel}
+                </h3>
                 <ul className="flex flex-col gap-3">
                   {rows.map((it, i) => (
-                    <ActivityRow key={`${gi}-${i}`} item={it} />
+                    <ActivityRow
+                      key={`${gi}-${i}`}
+                      item={it}
+                      onLessonClick={handleLessonClick}
+                    />
                   ))}
                 </ul>
               </section>
@@ -176,6 +221,86 @@ export default function TeacherStudentActivityLog({ studentId, token }) {
           </div>
         )}
       </div>
+
+      {/* 🔹 Lesson drilldown modal */}
+      {lessonTable && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl p-6">
+            <h2 className="text-2xl font-bold mb-4">
+              Lesson {lessonTable.lesson_id} – Activity Breakdown
+            </h2>
+
+            {lessonLoading && (
+              <div className="text-sm text-gray-500 mb-3">
+                Loading lesson details…
+              </div>
+            )}
+
+            {/* Excel-style layout */}
+            <div className="border rounded-xl overflow-hidden">
+              <div className="grid grid-cols-6 text-xs font-semibold bg-gray-100 border-b">
+                <div className="p-2">Activity</div>
+                <div className="p-2 col-span-2">Question</div>
+                <div className="p-2">Spiral Tag</div>
+                <div className="p-2 text-center">Attempts</div>
+                <div className="p-2 text-center">Score / Avg</div>
+              </div>
+
+              {lessonTable.rows && lessonTable.rows.length > 0 ? (
+                lessonTable.rows.map((row, i) => (
+                  <div
+                    key={i}
+                    className="grid grid-cols-6 text-sm border-b last:border-b-0 hover:bg-gray-50"
+                  >
+                    <div className="p-2 font-medium">Activity {i + 1}</div>
+                    <div className="p-2 col-span-2">
+                      {row.question || "—"}
+                    </div>
+                    <div className="p-2">
+                      {row.spiral_tag && row.spiral_tag !== ""
+                        ? row.spiral_tag
+                        : "—"}
+                    </div>
+                    <div className="p-2 text-center">{row.attempts}</div>
+                    <div className="p-2 text-center">
+                      {row.score != null ? Math.round(row.score) : "—"} /{" "}
+                      {row.average != null ? row.average.toFixed?.(1) ?? row.average : "—"}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="p-4 text-sm text-gray-500">
+                  No attempts yet for this lesson.
+                </div>
+              )}
+            </div>
+
+            {/* Footer overall average */}
+            {lessonTable.rows && lessonTable.rows.length > 0 && (
+              <div className="flex justify-end mt-4 text-base font-bold text-blue-600">
+                Lesson Avg:&nbsp;
+                {(() => {
+                  const vals = lessonTable.rows
+                    .map((r) => r.average)
+                    .filter((v) => typeof v === "number");
+                  if (!vals.length) return "—";
+                  const sum = vals.reduce((a, b) => a + b, 0);
+                  return `${(sum / vals.length).toFixed(1)}%`;
+                })()}
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setLessonTable(null)}
+                className="px-5 py-2 bg-[#2E4bff] text-white rounded-lg hover:brightness-110 text-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -198,7 +323,9 @@ function Toggle({ value, onChange }) {
             key={o.key}
             onClick={() => onChange(o.key)}
             className={`px-3 py-1.5 text-sm rounded-lg transition ${
-              active ? "bg-[#2E4bff] text-white" : "text-gray-600 hover:bg-white"
+              active
+                ? "bg-[#2E4bff] text-white"
+                : "text-gray-600 hover:bg-white"
             }`}
           >
             {o.label}
@@ -209,13 +336,16 @@ function Toggle({ value, onChange }) {
   );
 }
 
-function ActivityRow({ item }) {
+function ActivityRow({ item, onLessonClick }) {
   const time = new Date(item.ts).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   });
+
   const chip = (label) => (
-    <span className="px-2 py-0.5 text-xs rounded-lg border bg-[#F9FAFB] text-gray-700">{label}</span>
+    <span className="px-2 py-0.5 text-xs rounded-lg border bg-[#F9FAFB] text-gray-700">
+      {label}
+    </span>
   );
 
   const icon = (() => {
@@ -225,7 +355,7 @@ function ActivityRow({ item }) {
       case "SPEECH":
         return <PiStudentBold className="text-[#2E4bff]" />;
       case "EMOTION":
-        return <IoHappyOutline className="text-[#2E4bff]" />; // FIXED ICON
+        return <IoHappyOutline className="text-[#2E4bff]" />;
       case "SESSION":
         return <FiClock className="text-[#2E4bff]" />;
       default:
@@ -233,8 +363,21 @@ function ActivityRow({ item }) {
     }
   })();
 
+  const clickable = item.type === "LESSON";
+
+  const handleClick = () => {
+    if (clickable && typeof onLessonClick === "function") {
+      onLessonClick(item);
+    }
+  };
+
   return (
-    <li className="flex items-start gap-3">
+    <li
+      className={`flex items-start gap-3 ${
+        clickable ? "cursor-pointer hover:bg-gray-50 rounded-xl p-2 -m-2" : ""
+      }`}
+      onClick={handleClick}
+    >
       <div className="w-9 h-9 rounded-xl bg-[#EAF0FF] flex items-center justify-center shrink-0">
         {icon}
       </div>
@@ -244,7 +387,11 @@ function ActivityRow({ item }) {
             <div className="font-semibold text-[#111] truncate">
               {item.title || item.type}
             </div>
-            {item.detail && <div className="text-sm text-gray-600 truncate">{item.detail}</div>}
+            {item.detail && (
+              <div className="text-sm text-gray-600 truncate">
+                {item.detail}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {typeof item.score === "number" && chip(`Score ${item.score}%`)}
