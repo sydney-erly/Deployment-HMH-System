@@ -1,5 +1,6 @@
 // src/pages/TeacherStudentInfo.jsx
-// updated 11/14/2025
+// updated with modal-based alerts (no browser alert())
+
 import TeacherStudentOverview from "./TeacherStudentOverview";
 import TeacherStudentReportsTab from "./TeacherStudentReportsTab";
 import TeacherStudentActivityLog from "./TeacherStudentActivityLog";
@@ -14,19 +15,15 @@ import { SiGoogleanalytics } from "react-icons/si";
 import { MdDeleteOutline } from "react-icons/md";
 import hmhIcon from "../assets/hmh_icon.png";
 
-
 export default function TeacherStudentInfo() {
   const nav = useNavigate();
   const location = useLocation();
-
 
   // supports :students_id or :id
   const params = useParams();
   const students_id = params.students_id ?? params.id;
 
-
   const token = auth.token();
-
 
   const [student, setStudent] = useState(null);
   const [formData, setFormData] = useState({});
@@ -37,13 +34,18 @@ export default function TeacherStudentInfo() {
   const [showDelete, setShowDelete] = useState(false);
   const [tab, setTab] = useState("overview");
 
+  // NEW: feedback modal (replaces alert())
+  const [modal, setModal] = useState({
+    open: false,
+    type: "success", // 'success' | 'error' | 'info'
+    message: "",
+  });
 
   // sidebar state & gesture
   const [navOpen, setNavOpen] = useState(false);
   const [dragX, setDragX] = useState(0);
   const draggingRef = useRef(false);
   const startXRef = useRef(0);
-
 
   // fetch student
   useEffect(() => {
@@ -59,6 +61,11 @@ export default function TeacherStudentInfo() {
         setFormData(res);
       } catch (e) {
         console.error("Failed to fetch student info:", e);
+        setModal({
+          open: true,
+          type: "error",
+          message: "Failed to load student information.",
+        });
       } finally {
         if (alive) setLoading(false);
       }
@@ -68,14 +75,12 @@ export default function TeacherStudentInfo() {
     };
   }, [students_id, token]);
 
-
   // background color
   useEffect(() => {
     const prev = document.body.style.backgroundColor;
     document.body.style.backgroundColor = "#F6F7FB";
     return () => (document.body.style.backgroundColor = prev);
   }, []);
-
 
   // scroll lock for drawer
   useEffect(() => {
@@ -84,12 +89,10 @@ export default function TeacherStudentInfo() {
     return () => (document.body.style.overflow = prev);
   }, [navOpen]);
 
-
   // swipe gestures
   const EDGE_WIDTH = 24;
   const OPEN_THRESHOLD = 80;
   const CLOSE_THRESHOLD = -80;
-
 
   function onEdgeTouchStart(e) {
     if (navOpen) return;
@@ -133,7 +136,6 @@ export default function TeacherStudentInfo() {
     setDragX(0);
   }
 
-
   const drawerStyle = {};
   let drawerClasses =
     "fixed inset-y-0 left-0 w-64 bg-[#2E4bff] text-white p-6 flex flex-col z-50 shadow-lg will-change-transform transition-transform duration-200 ease-out";
@@ -144,7 +146,6 @@ export default function TeacherStudentInfo() {
   } else {
     drawerClasses += " -translate-x-full";
   }
-
 
   // form helpers
   function handleChange(e) {
@@ -158,7 +159,6 @@ export default function TeacherStudentInfo() {
   function handleSavePrompt() {
     setShowConfirm(true);
   }
-
 
   function whitelist(src = {}) {
     const allowed = [
@@ -190,7 +190,6 @@ export default function TeacherStudentInfo() {
     return out;
   }
 
-
   function normalizeValues(out) {
     for (const k of Object.keys(out)) {
       const v = out[k];
@@ -218,7 +217,6 @@ export default function TeacherStudentInfo() {
     return out;
   }
 
-
   function applyRequiredFallbacks(out, current) {
     const required = ["first_name", "last_name"];
     for (const k of required) {
@@ -231,7 +229,6 @@ export default function TeacherStudentInfo() {
     if (out.sex == null && current?.sex == null) out.sex = "Unspecified";
     return out;
   }
-
 
   function diffPayload(current = {}, next = {}) {
     const changed = {};
@@ -247,7 +244,6 @@ export default function TeacherStudentInfo() {
     return changed;
   }
 
-
   async function confirmSave() {
     setShowConfirm(false);
     setSaving(true);
@@ -257,14 +253,16 @@ export default function TeacherStudentInfo() {
       candidate = applyRequiredFallbacks(candidate, student);
       const payload = diffPayload(whitelist(student), candidate);
 
-
       if (!Object.keys(payload).length) {
         setEditing(false);
-        alert("No changes to save.");
+        setModal({
+          open: true,
+          type: "info",
+          message: "No changes to save.",
+        });
         setSaving(false);
         return;
       }
-
 
       await apiFetch(`/teacher/student/${students_id}`, {
         method: "PUT",
@@ -272,19 +270,25 @@ export default function TeacherStudentInfo() {
         body: payload,
       });
 
-
       setStudent((prev) => ({ ...prev, ...payload }));
       setFormData((prev) => ({ ...prev, ...payload }));
       setEditing(false);
-      alert("Student information updated successfully!");
+      setModal({
+        open: true,
+        type: "success",
+        message: "Student information updated successfully!",
+      });
     } catch (err) {
       console.error("Error updating student:", err);
-      alert("Failed to update student information.");
+      setModal({
+        open: true,
+        type: "error",
+        message: "Failed to update student information.",
+      });
     } finally {
       setSaving(false);
     }
   }
-
 
   async function confirmDelete() {
     try {
@@ -292,14 +296,20 @@ export default function TeacherStudentInfo() {
         method: "DELETE",
         token,
       });
-      alert("Student deleted successfully.");
-      nav("/teacher/students");
+      setModal({
+        open: true,
+        type: "success",
+        message: "Student deleted successfully.",
+      });
     } catch (err) {
       console.error("Error deleting student:", err);
-      alert("Failed to delete student.");
+      setModal({
+        open: true,
+        type: "error",
+        message: "Failed to delete student.",
+      });
     }
   }
-
 
   // SVG avatar fallback
   const fallbackAvatarDataUri =
@@ -312,9 +322,7 @@ export default function TeacherStudentInfo() {
       </svg>`
     );
 
-
   const imgSrc = student?.photo_url_resolved || student?.photo_url || null;
-
 
   return (
     <div className="min-h-[100dvh] bg-[#F6F7FB] flex lg:pl-64 overflow-x-hidden">
@@ -322,7 +330,11 @@ export default function TeacherStudentInfo() {
       <aside className="hidden lg:flex fixed top-0 left-0 h-screen w-64 bg-[#2E4bff] text-white px-6 py-8 flex flex-col justify-between shadow-lg">
         <div>
           <div className="flex flex-col items-center mb-8">
-            <img src={hmhIcon} alt="HearMyHeart Icon" className="w-auto h-18 mb-3 object-contain" />
+            <img
+              src={hmhIcon}
+              alt="HearMyHeart Icon"
+              className="w-auto h-18 mb-3 object-contain"
+            />
             <div className="text-2xl font-bold">HearMyHeart</div>
           </div>
           <SidebarLinks location={location} />
@@ -339,7 +351,6 @@ export default function TeacherStudentInfo() {
           </button>
         </div>
       </aside>
-
 
       {/* Mobile Drawer */}
       {!navOpen && (
@@ -358,7 +369,11 @@ export default function TeacherStudentInfo() {
         onTouchEnd={onDrawerTouchEnd}
       >
         <div className="flex flex-col items-center mb-6">
-          <img src={hmhIcon} alt="HearMyHeart Icon" className="w-auto h-15 mb-2 object-contain" />
+          <img
+            src={hmhIcon}
+            alt="HearMyHeart Icon"
+            className="w-auto h-15 mb-2 object-contain"
+          />
           <div className="text-2xl font-bold">HearMyHeart</div>
         </div>
         <SidebarLinks location={location} />
@@ -370,7 +385,6 @@ export default function TeacherStudentInfo() {
         />
       )}
 
-
       {/* Main */}
       <main
         key={students_id}
@@ -380,13 +394,14 @@ export default function TeacherStudentInfo() {
           <h1 className="text-3xl font-bold text-[#111]">Student Information</h1>
         </div>
 
-
         {loading ? (
           <div className="flex items-center justify-center h-[70vh] text-gray-500">
             Loading student information...
           </div>
         ) : !student ? (
-          <div className="text-center text-gray-500 mt-10">No student information found.</div>
+          <div className="text-center text-gray-500 mt-10">
+            No student information found.
+          </div>
         ) : (
           <>
             {/* Identity */}
@@ -456,7 +471,6 @@ export default function TeacherStudentInfo() {
               </div>
             </div>
 
-
             {/* Tabs */}
             <div className="hidden sm:flex items-center gap-6 text-lg font-semibold px-2">
               {[
@@ -479,7 +493,6 @@ export default function TeacherStudentInfo() {
               ))}
             </div>
 
-
             {/* Mobile dropdown */}
             <div className="sm:hidden px-2 mt-2">
               <select
@@ -494,13 +507,11 @@ export default function TeacherStudentInfo() {
               </select>
             </div>
 
-
             {/* Tab Content */}
             <div className="mt-4 bg-white rounded-2xl shadow-sm border border-gray-200 p-5 md:p-6 min-h-[45vh]">
               {tab === "overview" && (
                 <TeacherStudentOverview studentId={students_id} token={token} />
               )}
-
 
               {tab === "profile" && (
                 <form
@@ -527,7 +538,6 @@ export default function TeacherStudentInfo() {
                     )}
                   </div>
 
-
                   <div className="grid md:grid-cols-2 gap-4">
                     {[
                       ["first_name", "First Name"],
@@ -551,7 +561,6 @@ export default function TeacherStudentInfo() {
                       />
                     ))}
                   </div>
-
 
                   <SectionTitle>Background</SectionTitle>
                   <div className="grid md:grid-cols-2 gap-4">
@@ -581,7 +590,6 @@ export default function TeacherStudentInfo() {
                     </div>
                   </div>
 
-
                   <SectionTitle>Guardian Information</SectionTitle>
                   <div className="grid md:grid-cols-2 gap-4">
                     {[
@@ -602,7 +610,6 @@ export default function TeacherStudentInfo() {
                       />
                     ))}
                   </div>
-
 
                   <div className="sticky bottom-0 -mx-5 md:-mx-6 -mb-5 bg-white rounded-b-2xl border-t p-4 flex justify-end gap-3">
                     {editing ? (
@@ -636,7 +643,6 @@ export default function TeacherStudentInfo() {
                 </form>
               )}
 
-
               {tab === "progress" && (
                 <div>
                   <div className="flex items-center justify-between mb-4">
@@ -650,14 +656,12 @@ export default function TeacherStudentInfo() {
                 </div>
               )}
 
-
               {tab === "activity" && (
                 <TeacherStudentActivityLog studentId={students_id} token={token} />
               )}
             </div>
           </>
         )}
-
 
         {/* Delete confirmation modal */}
         {showDelete && (
@@ -667,8 +671,8 @@ export default function TeacherStudentInfo() {
                 Careful! This action can&apos;t be undone.
               </h3>
               <p className="text-gray-600 mb-6">
-                Are you sure you want to permanently delete this student and all of their records
-                from HearMyHeart?
+                Are you sure you want to permanently delete this student and all of
+                their records from HearMyHeart?
               </p>
               <div className="flex justify-center gap-4">
                 <button
@@ -688,12 +692,13 @@ export default function TeacherStudentInfo() {
           </div>
         )}
 
-
         {/* Save confirmation modal */}
         {showConfirm && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
             <div className="bg-white rounded-2xl shadow-xl p-8 w-[90%] max-w-md text-center border border-gray-100">
-              <h3 className="text-xl font-semibold text-[#2E4bff] mb-3">Confirm Update</h3>
+              <h3 className="text-xl font-semibold text-[#2E4bff] mb-3">
+                Confirm Update
+              </h3>
               <p className="text-gray-600 mb-6">
                 Are you sure you want to update this student’s information?
               </p>
@@ -714,11 +719,48 @@ export default function TeacherStudentInfo() {
             </div>
           </div>
         )}
+
+        {/* Feedback modal (replaces all alert()) */}
+        {modal.open && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl text-center border border-gray-100">
+              {modal.type === "success" && (
+                <h2 className="text-xl font-semibold text-green-600 mb-3">
+                  Success
+                </h2>
+              )}
+              {modal.type === "error" && (
+                <h2 className="text-xl font-semibold text-red-600 mb-3">Error</h2>
+              )}
+              {modal.type === "info" && (
+                <h2 className="text-xl font-semibold text-[#2E4bff] mb-3">
+                  Notice
+                </h2>
+              )}
+
+              <p className="text-gray-700 mb-6">{modal.message}</p>
+
+              <button
+                onClick={() => {
+                  const deleted = modal.message
+                    .toLowerCase()
+                    .includes("deleted successfully");
+                  setModal({ open: false, type: "success", message: "" });
+                  if (deleted) {
+                    nav("/teacher/students");
+                  }
+                }}
+                className="px-6 py-2 rounded-xl bg-[#2E4bff] text-white hover:brightness-110 transition"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
 }
-
 
 /* ---------- Helper Components ---------- */
 function SectionTitle({ children }) {
@@ -728,7 +770,6 @@ function SectionTitle({ children }) {
     </h3>
   );
 }
-
 
 function InputField({ label, name, value, onChange, disabled }) {
   const displayValue = value?.trim() === "" && disabled ? "—" : value;
@@ -755,14 +796,15 @@ function InputField({ label, name, value, onChange, disabled }) {
   );
 }
 
-
 function SidebarLinks({ location }) {
   return (
     <>
       <Link
         to="/teacher"
         className={`flex items-center gap-3 px-3 py-2 rounded-xl mb-2 font-medium ${
-          location.pathname === "/teacher" ? "bg-white text-[#2E4bff]" : "hover:bg-white/10"
+          location.pathname === "/teacher"
+            ? "bg-white text-[#2E4bff]"
+            : "hover:bg-white/10"
         }`}
       >
         <GoHome className="text-xl" />
@@ -794,4 +836,3 @@ function SidebarLinks({ location }) {
     </>
   );
 }
-
