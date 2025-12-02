@@ -3,9 +3,9 @@ import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import brokenHeart from "../../assets/broken-heart.png";
-import closeIcon from "../../assets/home.png";        // ADD THIS
-import skipIcon from "../../assets/play.png";    // ADD THIS
-import retryIcon from "../../assets/retry.png"; // Already have? Or add
+import closeIcon from "../../assets/home.png";       
+import skipIcon from "../../assets/play.png";    
+import retryIcon from "../../assets/retry.png"; 
 
 export default function SkipModal({ visible, onSkip, onRetry, onExit, lang = "en" }) {
   if (!visible) return null;
