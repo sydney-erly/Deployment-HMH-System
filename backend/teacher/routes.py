@@ -1,5 +1,5 @@
 # backend/teacher/routes.py
-# updated 12/01/2025 08:01PM
+# updated 12/03/2025 11:50AM
 
 
 
@@ -415,7 +415,15 @@ def overview():
 
 
     # --- Basic counts ---
-    students_rows = sb_try_rows("students", lambda: sb_exec(sb.table("students").select("students_id")))
+    students_rows = sb_try_rows(
+    "students",
+    lambda: sb_exec(
+        sb.table("students")
+          .select("students_id")
+          .eq("record_status", "Active")
+    )
+)
+
     sessions_rows = sb_try_rows(
         "sessions",
         lambda: sb_exec(sb.table("sessions").select("id").gte("started_at", today_start_utc()))
@@ -511,7 +519,15 @@ def overview():
 
 
     # --- Diagnosis distribution ---
-    diag_rows = sb_try_rows("students diagnosis", lambda: sb_exec(sb.table("students").select("diagnosis")))
+    diag_rows = sb_try_rows(
+    "students diagnosis",
+    lambda: sb_exec(
+        sb.table("students")
+          .select("diagnosis")
+          .eq("record_status", "Active")
+    )
+)
+
     diag_counts = {"ASD": 0, "DS": 0, "GDD": 0, "SPEECH DELAY": 0, "ADHD": 0, "Unspecified": 0}
     for r in diag_rows:
         raw = r.get("diagnosis")
@@ -1092,7 +1108,12 @@ def update_teacher_profile():
 @require_teacher
 def rooms():
     sb = supabase_client.client
-    rows, err = sb_exec(sb.table("students").select("room_assignment"))
+    rows, err = sb_exec(
+    sb.table("students")
+      .select("room_assignment, record_status")
+      .eq("record_status", "Active")
+)
+
     if err:
         return jsonify({"error": err}), 500
 
@@ -1130,8 +1151,9 @@ def list_students():
 
 
     q = sb.table("students").select(
-        "students_id,login_id,first_name,middle_name,last_name,birthday,diagnosis,enrollment_status,room_assignment,photo_url"
-    ).order("last_name")
+    "students_id,login_id,first_name,middle_name,last_name,birthday,diagnosis,enrollment_status,room_assignment,photo_url,record_status"
+    ).eq("record_status", "Active") \
+    .order("last_name")
 
 
 
@@ -1208,6 +1230,9 @@ def create_student():
     # Ensure photo_url exists
     if not payload.get("photo_url"):
         payload["photo_url"] = ""
+
+    if not payload.get("record_status"):
+        payload["record_status"] = "Active"
 
 
 
@@ -1360,14 +1385,32 @@ def update_student(students_id):
 
 
 # -------------------------------------------------------
+# -------------------------------------------------------
 @teacher_bp.delete("/student/<uuid:students_id>")
 @require_teacher
 def delete_student(students_id):
+    """
+    Soft delete: mark student as Archived so they disappear from dashboards,
+    but keep all related data (sessions, attempts, speech/emotion metrics).
+    """
     sb = supabase_client.client
-    _, err = sb_exec(sb.table("students").delete().eq("students_id", str(students_id)))
+
+    # We only update flags – we do NOT delete the row
+    payload = {
+        "record_status": "Archived",
+        "enrollment_status": "Inactive",
+    }
+
+    _, err = sb_exec(
+        sb.table("students")
+          .update(payload)
+          .eq("students_id", str(students_id))
+    )
+
     if err:
-        return jsonify({"error": err}), 500
-    return jsonify({"ok": True})
+        return jsonify({"error": str(err)}), 500
+
+    return jsonify({"ok": True, "archived": True})
 
 
 
