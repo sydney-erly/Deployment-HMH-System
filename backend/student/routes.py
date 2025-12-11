@@ -573,7 +573,7 @@ def student_dashboard():
                     prev_completed = False
                 else:
                     if lsort == 1:
-                        status = "unlocked"
+                        status = "unlocked" if not is_future else "locked"
                         prev_completed = (real == "completed")
                     else:
                         status = "unlocked" if prev_completed else "locked"
@@ -588,7 +588,7 @@ def student_dashboard():
                     prev_completed = False
                 else:
                     if lsort == 1:
-                        status = "unlocked"
+                        status = "unlocked" if not is_future else "locked"
                         prev_completed = (real == "completed")
                     else:
                         status = "unlocked" if prev_completed else "locked"

@@ -3,16 +3,12 @@
 
 
 
-
 # from backend.utils.defaults import assign_default_photo_path
 from flask import Blueprint, request, jsonify
 from datetime import datetime, timedelta, timezone
 import bcrypt
 import re
 from collections import defaultdict
-
-
-
 
 from auth.jwt_utils import require_teacher
 from extensions import supabase_client
