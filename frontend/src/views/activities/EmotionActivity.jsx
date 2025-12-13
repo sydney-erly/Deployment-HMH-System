@@ -180,18 +180,18 @@ export default function EmotionActivity({ activity, onComplete }) {
         // FAILED - Show helpful feedback
         // ============================================
         const detectedEmoji = {
-          happy: "😄",
-          angry: "😡",
-          sad: "🥺",
-          surprised: "😮",
+          happy: "😊",
+          angry: "😠",
+          sad: "😢",
+          surprised: "😲",
           neutral: "😐"
         }[res.label] || "❓";
         
         const hint = res.feedback_hint || (lang === "tl" ? "Subukang muli!" : "Keep trying!");
         
         const feedbackMsg = lang === "tl"
-          ? `Nakita ko ang: ${detectedEmoji} ${res.label}\n💡 ${hint} mukha`
-          : `I see: ${detectedEmoji} ${res.label}\n💡 ${hint} face` ;
+          ? `Nakita ko: ${detectedEmoji} ${res.label}\n💡 ${hint}`
+          : `I see: ${detectedEmoji} ${res.label}\n💡 ${hint}`;
         
         setFeedback(feedbackMsg);
         

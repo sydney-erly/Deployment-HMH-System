@@ -1,4 +1,3 @@
-#backend/content/emotion/routes_emotion.py
 import base64
 import cv2
 import numpy as np
@@ -118,7 +117,7 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
     scores = {}
 
     # ============================================
-    # EMOTION DETECTION (More Strict & Accurate)
+    # EMOTION DETECTION (Balanced & Accurate)
     # ============================================
     
     # 1. HAPPY - Look for smile (bright mouth, high variance)
@@ -126,45 +125,56 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
     smile_variance = mouth_std
     
     if smile_brightness > (5 * adaptive) and smile_variance > (15 * adaptive):
-        scores["happy"] = 0.70
+        scores["happy"] = 0.75
     elif smile_brightness > (3 * adaptive) and smile_variance > (12 * adaptive):
-        scores["happy"] = 0.50
-    elif smile_brightness > (2 * adaptive):
+        scores["happy"] = 0.60
+    elif smile_brightness > (1.5 * adaptive) and smile_variance > (10 * adaptive):
+        scores["happy"] = 0.45
+    elif smile_variance > (8 * adaptive):
         scores["happy"] = 0.35
 
     # 2. ANGRY - Dark eyebrows (furrowed) + tense mouth
     eyebrow_darkness = face_mean - eyebrows_mean
-    mouth_tension = mouth_std < (8 * adaptive)  # Tight mouth
+    eye_darkness = face_mean - eyes_mean
+    mouth_tension = mouth_std < (10 * adaptive)  # Tight mouth
     
     if eyebrow_darkness > (8 * adaptive) and mouth_tension:
-        scores["angry"] = 0.70
-    elif eyebrow_darkness > (5 * adaptive) and eyes_std > (12 * adaptive):
-        scores["angry"] = 0.55
-    elif eyebrow_darkness > (3 * adaptive):
+        scores["angry"] = 0.75
+    elif eyebrow_darkness > (5 * adaptive) and eye_darkness > (4 * adaptive):
+        scores["angry"] = 0.60
+    elif eyebrow_darkness > (3 * adaptive) and mouth_tension:
+        scores["angry"] = 0.45
+    elif eyebrow_darkness > (2 * adaptive):
         scores["angry"] = 0.35
 
     # 3. SAD - Droopy features (dark eyes + down-turned mouth)
     eye_darkness = face_mean - eyes_mean
     mouth_darkness = face_mean - mouth_mean
     low_variance = mouth_std < (10 * adaptive)
+    very_dark_eyes = eye_darkness > (8 * adaptive)
     
-    if eye_darkness > (6 * adaptive) and mouth_darkness > (4 * adaptive) and low_variance:
-        scores["sad"] = 0.65
-    elif eye_darkness > (4 * adaptive) and low_variance:
-        scores["sad"] = 0.50
-    elif mouth_darkness > (3 * adaptive):
+    if very_dark_eyes and mouth_darkness > (5 * adaptive) and low_variance:
+        scores["sad"] = 0.75
+    elif eye_darkness > (5 * adaptive) and mouth_darkness > (3 * adaptive):
+        scores["sad"] = 0.60
+    elif eye_darkness > (3 * adaptive) and low_variance:
+        scores["sad"] = 0.45
+    elif mouth_darkness > (2 * adaptive) and low_variance:
         scores["sad"] = 0.35
 
     # 4. SURPRISED - Wide open mouth + raised eyebrows (bright eyes)
     mouth_openness = mouth_std
     eyebrow_raise = eyes_mean - face_mean
+    very_open = mouth_openness > (25 * adaptive)
     
-    if mouth_openness > (22 * adaptive) and eyebrow_raise > (5 * adaptive):
-        scores["surprised"] = 0.75
-    elif mouth_openness > (18 * adaptive):
-        scores["surprised"] = 0.60
-    elif mouth_openness > (15 * adaptive) and eyebrow_raise > (3 * adaptive):
-        scores["surprised"] = 0.45
+    if very_open and eyebrow_raise > (5 * adaptive):
+        scores["surprised"] = 0.80
+    elif mouth_openness > (20 * adaptive) and eyebrow_raise > (3 * adaptive):
+        scores["surprised"] = 0.65
+    elif mouth_openness > (17 * adaptive):
+        scores["surprised"] = 0.50
+    elif mouth_openness > (14 * adaptive) and eyebrow_raise > (2 * adaptive):
+        scores["surprised"] = 0.40
 
     # 5. NEUTRAL - Balanced features, low variance
     overall_variance = (mouth_std + eyes_std) / 2
@@ -280,17 +290,17 @@ def analyze_emotion():
     print(f"[EMOTION] Detected={label_norm} Expected={expected_norm} Conf={confidence:.3f} Scores={scores}")
 
     # ============================================
-    # STRICTER THRESHOLDS (No more lenient passing)
+    # VERY LENIENT THRESHOLDS (Easy to pass)
     # ============================================
     thresholds = {
-        "angry": 0.50,      # Need strong furrowed brows
-        "sad": 0.45,        # Need clear droopy features
-        "happy": 0.45,      # Need visible smile
-        "surprised": 0.55,  # Need obvious open mouth
-        "neutral": 0.40,    # Easier since it's passive
+        "angry": 0.15,
+        "sad": 0.15,
+        "happy": 0.15,
+        "surprised": 0.15,
+        "neutral": 0.15,
     }
     
-    required_confidence = thresholds.get(expected_norm, 0.45)
+    required_confidence = thresholds.get(expected_norm, 0.15)
     
     # ============================================
     # STRICT MATCHING: Both label AND confidence must pass
