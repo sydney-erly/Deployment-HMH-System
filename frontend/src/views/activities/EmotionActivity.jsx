@@ -136,6 +136,19 @@ export default function EmotionActivity({ activity, onComplete }) {
 
       setLoading(false);
 
+      // Handle no face detected
+      if (res.error === "no_face_detected") {
+        setFeedback(
+          lang === "tl"
+            ? "👤 Walang mukha na nakita. Siguraduhing nasa gitna ka ng camera."
+            : "👤 No face detected. Please center your face in the camera."
+        );
+        
+        // Clear feedback after 3 seconds
+        setTimeout(() => setFeedback(null), 3000);
+        return;
+      }
+
       if (res.passed) {
         // ============================================
         // SUCCESS! 
