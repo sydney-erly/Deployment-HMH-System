@@ -30,6 +30,37 @@ def _norm(s: str) -> str:
     return _ALIAS.get((s or "").lower().strip(), (s or "").lower().strip())
 
 
+def _get_feedback_hint(detected: str, expected: str, confidence: float, lang: str = "en") -> str:
+    """Provide helpful feedback when detection fails"""
+    if detected == expected and confidence < 0.45:
+        if lang == "tl":
+            return "Malapit na! Gawing mas malinaw ang iyong ekspresyon."
+        return "Almost! Try to make your expression more exaggerated."
+    
+    hints_en = {
+        "happy": "Try smiling wider! Show your teeth.",
+        "angry": "Furrow your eyebrows and tense your jaw.",
+        "sad": "Let your face droop. Think of something sad.",
+        "surprised": "Open your mouth wide and raise your eyebrows!",
+        "neutral": "Relax your face completely. No expression.",
+    }
+    
+    hints_tl = {
+        "happy": "Subukang ngumiti nang mas malawak! Ipakita ang iyong ngipin.",
+        "angry": "Kunutin ang iyong kilay at igalit ang iyong mukha.",
+        "sad": "Hayaang lumambot ang iyong mukha. Mag-isip ng malungkot.",
+        "surprised": "Buksan nang malaki ang iyong bibig at itaas ang kilay!",
+        "neutral": "Palakasin ang iyong mukha. Walang ekspresyon.",
+    }
+    
+    hints = hints_tl if lang == "tl" else hints_en
+    
+    if expected in hints:
+        return hints[expected]
+    
+    return "Patuloy na subukan!" if lang == "tl" else "Keep trying! You can do it!"
+
+
 # -----------------------------------------------------------
 # Preloaded OpenCV Face Detector
 # -----------------------------------------------------------
@@ -39,14 +70,15 @@ _FACE_CASCADE = cv2.CascadeClassifier(
 
 
 # -----------------------------------------------------------
-# ADAPTIVE CHILD + ADULT EMOTION DETECTOR (FAST)
+# IMPROVED EMOTION DETECTOR (STRICTER + MORE ACCURATE)
 # -----------------------------------------------------------
 def _analyze_image(image_bytes: bytes, expected_norm: str):
     """
-    Adaptive universal heuristic for children & adults.
-    Fast detection (<200ms) + expected-emotion boosting.
+    IMPROVED: Stricter detection with better accuracy.
+    - No artificial boosting of expected emotion
+    - Higher confidence requirements
+    - Better feature detection for each emotion
     """
-
     start = time.time()
 
     # Decode image
@@ -63,99 +95,98 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
         latency_ms = int((time.time() - start) * 1000)
         return "neutral", 0.3, {"neutral": 0.3}, latency_ms
 
-    # Pick largest face (works for adults & kids)
+    # Pick largest face
     (x, y, w, h) = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)[0]
     face = gray[y:y+h, x:x+w].astype("float32")
     face_mean = float(np.mean(face))
 
-    # Regions
-    mouth = face[int(h*0.60):int(h*0.92), int(w*0.15):int(w*0.85)]
-    eyes  = face[int(h*0.18):int(h*0.42), int(w*0.20):int(w*0.80)]
+    # Define regions more precisely
+    mouth_region = face[int(h*0.60):int(h*0.92), int(w*0.15):int(w*0.85)]
+    eyes_region = face[int(h*0.18):int(h*0.42), int(w*0.20):int(w*0.80)]
+    eyebrows_region = face[int(h*0.15):int(h*0.30), int(w*0.20):int(w*0.80)]
+    
+    # Calculate metrics
+    mouth_mean = float(np.mean(mouth_region)) if mouth_region.size else face_mean
+    mouth_std = float(np.std(mouth_region)) if mouth_region.size else 0
+    eyes_mean = float(np.mean(eyes_region)) if eyes_region.size else face_mean
+    eyes_std = float(np.std(eyes_region)) if eyes_region.size else 0
+    eyebrows_mean = float(np.mean(eyebrows_region)) if eyebrows_region.size else face_mean
 
-    mouth_mean = float(np.mean(mouth)) if mouth.size else face_mean
-    mouth_std  = float(np.std(mouth)) if mouth.size else 0
-    eyes_mean  = float(np.mean(eyes)) if eyes.size else face_mean
-    eyes_std   = float(np.std(eyes)) if eyes.size else 0
-
-    # Adaptive thresholds — larger face = adult
+    # Adaptive scaling for children vs adults
     adaptive = max(1.0, (w * h) / 25000)
 
     scores = {}
 
-    # --------------------------------------
-    # MOUTH STATUS
-    # --------------------------------------
-    mouth_open = (mouth_std > (14 * adaptive)) or (mouth_mean < face_mean - (6 * adaptive))
-    strong_mouth_open = (mouth_std > (20 * adaptive)) or (mouth_mean < face_mean - (10 * adaptive))
+    # ============================================
+    # EMOTION DETECTION (More Strict & Accurate)
+    # ============================================
+    
+    # 1. HAPPY - Look for smile (bright mouth, high variance)
+    smile_brightness = mouth_mean - face_mean
+    smile_variance = mouth_std
+    
+    if smile_brightness > (5 * adaptive) and smile_variance > (15 * adaptive):
+        scores["happy"] = 0.70
+    elif smile_brightness > (3 * adaptive) and smile_variance > (12 * adaptive):
+        scores["happy"] = 0.50
+    elif smile_brightness > (2 * adaptive):
+        scores["happy"] = 0.35
 
-    # --------------------------------------
-    # HAPPY
-    # --------------------------------------
-    if mouth_mean > face_mean + (4 * adaptive) or mouth_std > (12 * adaptive):
-        scores["happy"] = 0.55
+    # 2. ANGRY - Dark eyebrows (furrowed) + tense mouth
+    eyebrow_darkness = face_mean - eyebrows_mean
+    mouth_tension = mouth_std < (8 * adaptive)  # Tight mouth
+    
+    if eyebrow_darkness > (8 * adaptive) and mouth_tension:
+        scores["angry"] = 0.70
+    elif eyebrow_darkness > (5 * adaptive) and eyes_std > (12 * adaptive):
+        scores["angry"] = 0.55
+    elif eyebrow_darkness > (3 * adaptive):
+        scores["angry"] = 0.35
 
-    if mouth_std > (18 * adaptive):
-        scores["happy"] = max(scores.get("happy", 0), 0.75)
+    # 3. SAD - Droopy features (dark eyes + down-turned mouth)
+    eye_darkness = face_mean - eyes_mean
+    mouth_darkness = face_mean - mouth_mean
+    low_variance = mouth_std < (10 * adaptive)
+    
+    if eye_darkness > (6 * adaptive) and mouth_darkness > (4 * adaptive) and low_variance:
+        scores["sad"] = 0.65
+    elif eye_darkness > (4 * adaptive) and low_variance:
+        scores["sad"] = 0.50
+    elif mouth_darkness > (3 * adaptive):
+        scores["sad"] = 0.35
 
-    # --------------------------------------
-    # ANGRY (needs eyebrows down → darker eye region)
-    # --------------------------------------
-    if not mouth_open:
-        if (face_mean - eyes_mean) > (6 * adaptive) and eyes_std > (10 * adaptive):
-            scores["angry"] = 0.55
+    # 4. SURPRISED - Wide open mouth + raised eyebrows (bright eyes)
+    mouth_openness = mouth_std
+    eyebrow_raise = eyes_mean - face_mean
+    
+    if mouth_openness > (22 * adaptive) and eyebrow_raise > (5 * adaptive):
+        scores["surprised"] = 0.75
+    elif mouth_openness > (18 * adaptive):
+        scores["surprised"] = 0.60
+    elif mouth_openness > (15 * adaptive) and eyebrow_raise > (3 * adaptive):
+        scores["surprised"] = 0.45
 
-        if (face_mean - eyes_mean) > (10 * adaptive):
-            scores["angry"] = max(scores.get("angry", 0), 0.75)
-
-    # --------------------------------------
-    # SAD (dark eyes/mouth but mouth closed)
-    # --------------------------------------
-    if not mouth_open:
-        if (face_mean - mouth_mean) > (5 * adaptive):
-            scores["sad"] = 0.55
-
-        if (face_mean - eyes_mean) > (5 * adaptive):
-            scores["sad"] = max(scores.get("sad", 0), 0.60)
-
-    # --------------------------------------
-    # SURPRISED (must have strong mouth open)
-    # --------------------------------------
-    if strong_mouth_open:
-        scores["surprised"] = 0.65
-
-        if mouth_std > (22 * adaptive):
-            scores["surprised"] = max(scores.get("surprised", 0), 0.80)
-
-        if (eyes_mean - face_mean) > (6 * adaptive):
-            scores["surprised"] = max(scores.get("surprised", 0), 0.75)
-
-    # --------------------------------------
-    # NEUTRAL (fallback)
-    # --------------------------------------
-    if not scores:
+    # 5. NEUTRAL - Balanced features, low variance
+    overall_variance = (mouth_std + eyes_std) / 2
+    is_balanced = abs(mouth_mean - face_mean) < (3 * adaptive)
+    
+    if is_balanced and overall_variance < (12 * adaptive):
+        scores["neutral"] = 0.60
+    elif is_balanced:
         scores["neutral"] = 0.40
-    elif all(v < 0.50 for v in scores.values()):
-        scores["neutral"] = max(scores.get("neutral", 0), 0.50)
 
-    # --------------------------------------
-    # FAST PASS BOOST FOR EXPECTED EMOTION
-    # --------------------------------------
-    fast_boost = {
-        "happy": 0.70,
-        "angry": 0.65,
-        "sad": 0.60,
-        "surprised": 0.75,
-        "neutral": 0.60,
-    }
+    # ============================================
+    # FALLBACK: If nothing detected strongly
+    # ============================================
+    if not scores or all(v < 0.35 for v in scores.values()):
+        scores["neutral"] = 0.45
 
-    if expected_norm in fast_boost:
-        scores[expected_norm] = max(scores.get(expected_norm, 0), fast_boost[expected_norm])
-
-    # Strong priority: expected emotion wins if visible at all
-    if expected_norm in scores:
-        scores[expected_norm] += 0.20
-
-    # Final result
+    # ============================================
+    # NO ARTIFICIAL BOOSTING
+    # Let the natural detection decide
+    # ============================================
+    
+    # Get top emotion
     label = max(scores, key=scores.get)
     confidence = float(min(scores[label], 1.0))
     latency_ms = int((time.time() - start) * 1000)
@@ -246,23 +277,27 @@ def analyze_emotion():
 
     label_norm = _norm(label)
 
-    print(f"[EMOTION] Detected={label_norm} Expected={expected_norm} Conf={confidence}")
+    print(f"[EMOTION] Detected={label_norm} Expected={expected_norm} Conf={confidence:.3f} Scores={scores}")
 
-    # Thresholds (very lenient)
+    # ============================================
+    # STRICTER THRESHOLDS (No more lenient passing)
+    # ============================================
     thresholds = {
-        "angry": 0.15,
-        "sad": 0.20,
-        "happy": 0.15,
-        "surprised": 0.15,
-        "neutral": 0.20,
+        "angry": 0.50,      # Need strong furrowed brows
+        "sad": 0.45,        # Need clear droopy features
+        "happy": 0.45,      # Need visible smile
+        "surprised": 0.55,  # Need obvious open mouth
+        "neutral": 0.40,    # Easier since it's passive
     }
-    threshold = thresholds.get(expected_norm, 0.15)
-
-    passed = (label_norm == expected_norm and confidence >= threshold)
-
-    # Soft pass
-    if not passed and label_norm == expected_norm:
-        passed = True
+    
+    required_confidence = thresholds.get(expected_norm, 0.45)
+    
+    # ============================================
+    # STRICT MATCHING: Both label AND confidence must pass
+    # ============================================
+    passed = (label_norm == expected_norm and confidence >= required_confidence)
+    
+    # NO SOFT PASS - If confidence is too low, they need to try again
 
     score = 100.0 if passed else 0.0
     attempt_id = None
@@ -292,7 +327,7 @@ def analyze_emotion():
                 "detected_emotion": label_norm,
                 "expected_emotion": expected_norm,
                 "confidence": round(confidence, 3),
-                "model_backend": "opencv-heuristic-v4",
+                "model_backend": "opencv-heuristic-v5-strict",
                 "latency_ms": latency_ms,
             }).execute()
 
@@ -312,6 +347,8 @@ def analyze_emotion():
         "attempt_id": attempt_id,
         "next_activity": next_act,
         "auto": auto_flag,
+        "all_scores": {k: round(v, 3) for k, v in scores.items()},  # Debug info
+        "feedback_hint": _get_feedback_hint(label_norm, expected_norm, confidence, lang)
     })
 
 

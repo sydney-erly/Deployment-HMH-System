@@ -64,8 +64,6 @@ export default function EmotionActivity({ activity, onComplete }) {
     parsedData?.i18n?.en?.expected_emotion ||
     "emotion";
 
-  
-
   // --------------------------------------------------
   // Camera Setup
   // --------------------------------------------------
@@ -105,7 +103,7 @@ export default function EmotionActivity({ activity, onComplete }) {
   }, [lang]);
 
   // --------------------------------------------------
-  // Capture + Analyze (FAST)
+  // Capture + Analyze (IMPROVED WITH FEEDBACK)
   // --------------------------------------------------
   const handleCapture = async () => {
     if (!cameraReady || !videoRef.current || loading || passed) return;
@@ -139,6 +137,9 @@ export default function EmotionActivity({ activity, onComplete }) {
       setLoading(false);
 
       if (res.passed) {
+        // ============================================
+        // SUCCESS! 
+        // ============================================
         setFlash(true);
         setTimeout(() => setFlash(false), 150);
 
@@ -154,8 +155,8 @@ export default function EmotionActivity({ activity, onComplete }) {
 
         const msg =
           lang === "tl"
-            ? ["Magaling!", "Ayos!", "Tama!"][Math.floor(Math.random() * 3)]
-            : ["Yay!", "Nice job!", "Great!"][Math.floor(Math.random() * 3)];
+            ? ["Magaling!", "Ayos!", "Tama!", "Perpekto!"][Math.floor(Math.random() * 4)]
+            : ["Perfect!", "Great job!", "Excellent!", "Amazing!"][Math.floor(Math.random() * 4)];
 
         setFeedback(msg);
 
@@ -172,9 +173,30 @@ export default function EmotionActivity({ activity, onComplete }) {
               layout: "emotion",
               lang,
             });
-        }, 1100);
+        }, 1500);
+        
       } else {
-        setFeedback(res.label || "?");
+        // ============================================
+        // FAILED - Show helpful feedback
+        // ============================================
+        const detectedEmoji = {
+          happy: "😄",
+          angry: "😡",
+          sad: "🥺",
+          surprised: "😮",
+          neutral: "😐"
+        }[res.label] || "❓";
+        
+        const hint = res.feedback_hint || (lang === "tl" ? "Subukang muli!" : "Keep trying!");
+        
+        const feedbackMsg = lang === "tl"
+          ? `Nakita ko ang: ${detectedEmoji} ${res.label}\n💡 ${hint} mukha`
+          : `I see: ${detectedEmoji} ${res.label}\n💡 ${hint} face` ;
+        
+        setFeedback(feedbackMsg);
+        
+        // Clear feedback after 3 seconds so they can try again
+        setTimeout(() => setFeedback(null), 3000);
       }
     } catch (err) {
       console.error("Emotion analyze error:", err);
@@ -184,11 +206,14 @@ export default function EmotionActivity({ activity, onComplete }) {
           : "Something went wrong. Please try again."
       );
       setLoading(false);
+      
+      // Clear error after 3 seconds
+      setTimeout(() => setFeedback(null), 3000);
     }
   };
 
   // --------------------------------------------------
-  // Auto Detect Loop (FAST — every 1 second)
+  // Auto Detect Loop (SLOWER - give students time to adjust)
   // --------------------------------------------------
   useEffect(() => {
     if (!cameraReady) return;
@@ -200,11 +225,13 @@ export default function EmotionActivity({ activity, onComplete }) {
     if (!streamActive) return;
 
     const interval = setInterval(() => {
-      if (!loading && !passed) handleCapture();
-    }, 1000); // <--- FAST DETECTION INTERVAL
+      if (!loading && !passed && !feedback) {  // Don't capture while showing feedback
+        handleCapture();
+      }
+    }, 2000); // <--- 2 seconds between attempts (was 1 second)
 
     return () => clearInterval(interval);
-  }, [cameraReady, passed, loading]);
+  }, [cameraReady, passed, loading, feedback]);
 
   // --------------------------------------------------
   // Manual Skip (Stop camera first)
@@ -268,6 +295,17 @@ export default function EmotionActivity({ activity, onComplete }) {
             transition={{ duration: 0.25 }}
           />
         )}
+        
+        {/* Loading Indicator */}
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+            <motion.div
+              className="w-12 h-12 border-4 border-white border-t-transparent rounded-full"
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+            />
+          </div>
+        )}
       </div>
 
       {/* FEEDBACK */}
@@ -278,8 +316,10 @@ export default function EmotionActivity({ activity, onComplete }) {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className={`mt-4 text-center font-semibold ${
-              passed ? "text-green-600" : "text-gray-600"
+            className={`mt-4 px-6 py-3 rounded-lg text-center font-semibold whitespace-pre-line max-w-md ${
+              passed 
+                ? "bg-green-100 text-green-700 border-2 border-green-300" 
+                : "bg-blue-100 text-blue-700 border-2 border-blue-300"
             }`}
           >
             {feedback}
@@ -299,8 +339,8 @@ export default function EmotionActivity({ activity, onComplete }) {
           >
             💡{" "}
             {lang === "tl"
-              ? "Subukang ipakita ang emosyon sa iyong mukha!"
-              : "Try to express the emotion with your face!"}
+              ? "Subukang ipakita ang emosyon sa iyong mukha nang mas malinaw!"
+              : "Try to express the emotion with your face more clearly!"}
           </motion.div>
         )}
       </AnimatePresence>
