@@ -144,6 +144,15 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
     # FAST PASS BOOST FOR EXPECTED EMOTION
     # --------------------------------------
     fast_boost = {
+        "happy": 0.70,
+        "angry": 0.65,
+        "sad": 0.60,
+        "surprised": 0.75,
+        "neutral": 0.60,
+    }
+
+    if expected_norm in fast_boost:
+        scores[expected_norm] = max(scores.get(expected_norm, 0), fast_boost[expected_norm])
 
     # Strong priority: expected emotion wins if visible at all
     if expected_norm in scores:
