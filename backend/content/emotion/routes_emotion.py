@@ -141,11 +141,11 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
     # FAST PASS BOOST FOR EXPECTED EMOTION
     # --------------------------------------
     fast_boost = {
-        "happy": 0.99, #.70
-        "angry": 0.99, #.65
-        "sad": 0.99,    #.60
-        "surprised": 0.99,  #.75
-        "neutral": 0.99,        #.60
+        "happy": 0.01, #.70
+        "angry": 0.01, #.65
+        "sad": 0.01,    #.60
+        "surprised": 0.01,  #.75
+        "neutral": 0.01,        #.60
     }
 
     if expected_norm in fast_boost:
