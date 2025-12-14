@@ -253,11 +253,11 @@ def analyze_emotion():
 
     # Thresholds (very lenient)
     thresholds = {
-        "angry": 0.15,
-        "sad": 0.20,
-        "happy": 0.15,
-        "surprised": 0.15,
-        "neutral": 0.20,
+        "angry": 0.70,
+        "sad": 0.75,
+        "happy": 0.80,  
+        "surprised": 0.75,
+        "neutral": 0.80,
     }
     threshold = thresholds.get(expected_norm, 0.15)
 
