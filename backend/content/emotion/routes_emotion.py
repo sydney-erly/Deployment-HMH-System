@@ -7,7 +7,6 @@ import traceback
 import json
 from flask import Blueprint, request, jsonify
 from datetime import datetime, timezone
-
 from extensions import supabase_client
 from utils.sb import sb_exec
 from auth.jwt_utils import require_student
@@ -19,16 +18,28 @@ emotion_bp = Blueprint("emotion", __name__, url_prefix="/api/emotion")
 # Alias Normalizer
 # -----------------------------------------------------------
 _ALIAS = {
-    "joy": "happy", "happiness": "happy", "masaya": "happy",
-    "angry": "angry", "anger": "angry", "mad": "angry", "galit": "angry", "disgust": "angry",
-    "sad": "sad", "sadness": "sad", "malungkot": "sad", "fear": "sad",
-    "surprised": "surprised", "surprise": "surprised", "gulat": "surprised",
-    "neutral": "neutral", "calm": "neutral", "kalma": "neutral",
+    "joy": "happy",
+    "happiness": "happy",
+    "masaya": "happy",
+    "angry": "angry",
+    "anger": "angry",
+    "mad": "angry",
+    "galit": "angry",
+    "disgust": "angry",
+    "sad": "sad",
+    "sadness": "sad",
+    "malungkot": "sad",
+    "fear": "sad",
+    "surprised": "surprised",
+    "surprise": "surprised",
+    "gulat": "surprised",
+    "neutral": "neutral",
+    "calm": "neutral",
+    "kalma": "neutral",
 }
 
 def _norm(s: str) -> str:
     return _ALIAS.get((s or "").lower().strip(), (s or "").lower().strip())
-
 
 # -----------------------------------------------------------
 # Preloaded OpenCV Face Detector
@@ -36,7 +47,6 @@ def _norm(s: str) -> str:
 _FACE_CASCADE = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
-
 
 # -----------------------------------------------------------
 # ADAPTIVE CHILD + ADULT EMOTION DETECTOR (FAST)
@@ -46,7 +56,6 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
     Adaptive universal heuristic for children & adults.
     Fast detection (<200ms) + expected-emotion boosting.
     """
-
     start = time.time()
 
     # Decode image
@@ -54,7 +63,6 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
     img_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if img_bgr is None:
         raise ValueError("Invalid image data")
-
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
 
     # Face detect
@@ -70,12 +78,12 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
 
     # Regions
     mouth = face[int(h*0.60):int(h*0.92), int(w*0.15):int(w*0.85)]
-    eyes  = face[int(h*0.18):int(h*0.42), int(w*0.20):int(w*0.80)]
+    eyes = face[int(h*0.18):int(h*0.42), int(w*0.20):int(w*0.80)]
 
     mouth_mean = float(np.mean(mouth)) if mouth.size else face_mean
-    mouth_std  = float(np.std(mouth)) if mouth.size else 0
-    eyes_mean  = float(np.mean(eyes)) if eyes.size else face_mean
-    eyes_std   = float(np.std(eyes)) if eyes.size else 0
+    mouth_std = float(np.std(mouth)) if mouth.size else 0
+    eyes_mean = float(np.mean(eyes)) if eyes.size else face_mean
+    eyes_std = float(np.std(eyes)) if eyes.size else 0
 
     # Adaptive thresholds — larger face = adult
     adaptive = max(1.0, (w * h) / 25000)
@@ -93,9 +101,8 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
     # --------------------------------------
     if mouth_mean > face_mean + (4 * adaptive) or mouth_std > (12 * adaptive):
         scores["happy"] = 0.55
-
-    if mouth_std > (18 * adaptive):
-        scores["happy"] = max(scores.get("happy", 0), 0.75)
+        if mouth_std > (18 * adaptive):
+            scores["happy"] = max(scores.get("happy", 0), 0.75)
 
     # --------------------------------------
     # ANGRY (needs eyebrows down → darker eye region)
@@ -103,9 +110,8 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
     if not mouth_open:
         if (face_mean - eyes_mean) > (6 * adaptive) and eyes_std > (10 * adaptive):
             scores["angry"] = 0.55
-
-        if (face_mean - eyes_mean) > (10 * adaptive):
-            scores["angry"] = max(scores.get("angry", 0), 0.75)
+            if (face_mean - eyes_mean) > (10 * adaptive):
+                scores["angry"] = max(scores.get("angry", 0), 0.75)
 
     # --------------------------------------
     # SAD (dark eyes/mouth but mouth closed)
@@ -113,7 +119,6 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
     if not mouth_open:
         if (face_mean - mouth_mean) > (5 * adaptive):
             scores["sad"] = 0.55
-
         if (face_mean - eyes_mean) > (5 * adaptive):
             scores["sad"] = max(scores.get("sad", 0), 0.60)
 
@@ -122,10 +127,8 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
     # --------------------------------------
     if strong_mouth_open:
         scores["surprised"] = 0.65
-
         if mouth_std > (22 * adaptive):
             scores["surprised"] = max(scores.get("surprised", 0), 0.80)
-
         if (eyes_mean - face_mean) > (6 * adaptive):
             scores["surprised"] = max(scores.get("surprised", 0), 0.75)
 
@@ -141,13 +144,12 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
     # FAST PASS BOOST FOR EXPECTED EMOTION
     # --------------------------------------
     fast_boost = {
-        "happy": 0.01, #.70
-        "angry": 0.01, #.65
-        "sad": 0.01,    #.60
+        "happy": 0.01,      #.70
+        "angry": 0.01,      #.65
+        "sad": 0.01,        #.60
         "surprised": 0.01,  #.75
-        "neutral": 0.01,        #.60
+        "neutral": 0.01,    #.60
     }
-
     if expected_norm in fast_boost:
         scores[expected_norm] = max(scores.get(expected_norm, 0), fast_boost[expected_norm])
 
@@ -162,7 +164,6 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
 
     return label, confidence, scores, latency_ms
 
-
 # -----------------------------------------------------------
 # NEXT ACTIVITY HELPER
 # -----------------------------------------------------------
@@ -170,16 +171,15 @@ def _next_activity_for(sb, lesson_id: int, sort_order: int):
     try:
         rows, _ = sb_exec(
             sb.table("activities")
-              .select("id, sort_order")
-              .eq("lesson_id", lesson_id)
-              .gt("sort_order", sort_order)
-              .order("sort_order")
-              .limit(1)
+            .select("id, sort_order")
+            .eq("lesson_id", lesson_id)
+            .gt("sort_order", sort_order)
+            .order("sort_order")
+            .limit(1)
         )
         return rows[0] if rows else None
     except:
         return None
-
 
 # -----------------------------------------------------------
 # MAIN EMOTION ANALYSIS ROUTE
@@ -189,8 +189,8 @@ def _next_activity_for(sb, lesson_id: int, sort_order: int):
 def analyze_emotion():
     sb = supabase_client.client
     data = request.get_json(silent=True) or {}
-
     sid = request.user_id
+
     activities_id = data.get("activities_id")
     lesson_id = data.get("lesson_id")
     lang = (data.get("lang") or "en").lower()
@@ -211,9 +211,9 @@ def analyze_emotion():
     # Load activity
     act_rows, err = sb_exec(
         sb.table("activities")
-          .select("id,data,sort_order,lesson_id")
-          .eq("id", activities_id)
-          .limit(1)
+        .select("id,data,sort_order,lesson_id")
+        .eq("id", activities_id)
+        .limit(1)
     )
     if err or not act_rows:
         return jsonify({"error": "Activity not found"}), 404
@@ -228,7 +228,6 @@ def analyze_emotion():
 
     i18n = act_data.get("i18n") or {}
     branch = i18n.get(lang) or i18n.get("en") or {}
-
     exp_raw = (
         branch.get("expected_emotion")
         or act_data.get("expected_emotion_en")
@@ -245,19 +244,17 @@ def analyze_emotion():
         return jsonify({"error": f"Emotion detection failed: {e}"}), 200
 
     label_norm = _norm(label)
-
     print(f"[EMOTION] Detected={label_norm} Expected={expected_norm} Conf={confidence}")
 
     # Thresholds (very lenient)
     thresholds = {
-        "angry": 0.65, #.15
-        "sad": 0.70,   #.20
-        "happy": 0.65, #.15
-        "surprised": 0.65, #.15
-        "neutral": 0.70, #.20
+        "angry": 0.65,      #.15
+        "sad": 0.70,        #.20
+        "happy": 0.65,      #.15
+        "surprised": 0.65,  #.15
+        "neutral": 0.70,    #.20
     }
     threshold = thresholds.get(expected_norm, 0.15)
-
     passed = (label_norm == expected_norm and confidence >= threshold)
 
     # Soft pass
@@ -282,7 +279,6 @@ def analyze_emotion():
                     "auto": auto_flag,
                 },
             }).execute()
-
             attempt_id = (ins.data or [{}])[0].get("id")
 
             sb.table("emotion_metrics").insert({
@@ -295,7 +291,6 @@ def analyze_emotion():
                 "model_backend": "opencv-heuristic-v4",
                 "latency_ms": latency_ms,
             }).execute()
-
         except Exception as e:
             print("⚠️ DB insert failed:", e)
 
@@ -314,7 +309,6 @@ def analyze_emotion():
         "auto": auto_flag,
     })
 
-
 # -----------------------------------------------------------
 # SKIP HANDLER
 # -----------------------------------------------------------
@@ -323,8 +317,8 @@ def analyze_emotion():
 def skip_emotion():
     sb = supabase_client.client
     data = request.get_json(silent=True) or {}
-
     sid = request.user_id
+
     activities_id = data.get("activities_id")
     lesson_id = data.get("lesson_id")
 
@@ -333,11 +327,10 @@ def skip_emotion():
 
     act_rows, err = sb_exec(
         sb.table("activities")
-          .select("lesson_id, sort_order")
-          .eq("id", activities_id)
-          .limit(1)
+        .select("lesson_id, sort_order")
+        .eq("id", activities_id)
+        .limit(1)
     )
-
     if err or not act_rows:
         return jsonify({"error": "Activity not found"}), 404
 
@@ -355,9 +348,7 @@ def skip_emotion():
                 "lesson_id": lesson_id,
             },
         }).execute()
-
         attempt_id = insert.data[0]["id"] if insert.data else None
-
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": f"DB insert failed: {e}"}), 500
@@ -369,4 +360,3 @@ def skip_emotion():
     )
 
     return jsonify({"ok": True, "attempt_id": attempt_id, "next_activity": next_act})
-
