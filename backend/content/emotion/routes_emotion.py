@@ -39,11 +39,11 @@ _FACE_CASCADE = cv2.CascadeClassifier(
 
 
 # -----------------------------------------------------------
-# ACCURATE  EMOTION DETECTOR
+# ACCURATE ADULT EMOTION DETECTOR
 # -----------------------------------------------------------
 def _analyze_image(image_bytes: bytes, expected_norm: str):
     """
-    Accurate emotion detection
+    Accurate emotion detection for adults.
     NO auto-pass, NO expected emotion boost.
     Pure detection based on facial features.
     """
@@ -83,47 +83,51 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
 
     scores = {}
 
- 
+    # Print debug info
+    print(f"[DEBUG] Face: mean={face_mean:.1f}")
+    print(f"[DEBUG] Mouth: mean={mouth_mean:.1f}, std={mouth_std:.1f}")
+    print(f"[DEBUG] Eyes: mean={eyes_mean:.1f}, std={eyes_std:.1f}")
+    print(f"[DEBUG] Eyebrows: mean={eyebrows_mean:.1f}")
 
     # --------------------------------------
     # HAPPY - bright mouth, high variation (smile)
     # --------------------------------------
-    if mouth_std > 16 and mouth_mean > face_mean + 4:
-        happy_score = min(0.6 + (mouth_std - 16) * 0.015, 0.85)
+    if mouth_std > 18 and mouth_mean > face_mean + 5:
+        happy_score = min(0.7 + (mouth_std - 18) * 0.02, 0.95)
         scores["happy"] = happy_score
         print(f"[HAPPY] Detected: {happy_score:.2f}")
 
     # --------------------------------------
     # SAD - dark eyes, low mouth variation, slightly down
     # --------------------------------------
-    if (face_mean - eyes_mean) > 6 and mouth_std < 10 and mouth_mean < face_mean:
-        sad_score = min(0.55 + ((face_mean - eyes_mean) - 6) * 0.025, 0.85)
+    if (face_mean - eyes_mean) > 8 and mouth_std < 12 and mouth_mean < face_mean:
+        sad_score = min(0.6 + ((face_mean - eyes_mean) - 8) * 0.03, 0.90)
         scores["sad"] = sad_score
         print(f"[SAD] Detected: {sad_score:.2f}")
 
     # --------------------------------------
     # ANGRY - very dark eyebrows/eyes, mouth closed, tense
     # --------------------------------------
-    if (face_mean - eyebrows_mean) > 10 and (face_mean - eyes_mean) > 8 and mouth_std < 15:
-        angry_score = min(0.65 + ((face_mean - eyebrows_mean) - 10) * 0.02, 0.85)
+    if (face_mean - eyebrows_mean) > 12 and (face_mean - eyes_mean) > 10 and mouth_std < 15:
+        angry_score = min(0.65 + ((face_mean - eyebrows_mean) - 12) * 0.03, 0.92)
         scores["angry"] = angry_score
         print(f"[ANGRY] Detected: {angry_score:.2f}")
 
     # --------------------------------------
     # SURPRISED - wide open mouth, bright eyes
     # --------------------------------------
-    if mouth_std > 22 and mouth_mean < face_mean - 6:
-        surprised_score = min(0.6 + (mouth_std - 22) * 0.015, 0.85)
-        if eyes_mean > face_mean + 2:  # Wide eyes bonus
-            surprised_score += 0.5
-        scores["surprised"] = min(surprised_score, 0.90)
+    if mouth_std > 25 and mouth_mean < face_mean - 8:
+        surprised_score = min(0.7 + (mouth_std - 25) * 0.02, 0.95)
+        if eyes_mean > face_mean + 3:  # Wide eyes bonus
+            surprised_score += 0.1
+        scores["surprised"] = min(surprised_score, 0.98)
         print(f"[SURPRISED] Detected: {surprised_score:.2f}")
 
     # --------------------------------------
     # NEUTRAL - fallback when nothing strong detected
     # --------------------------------------
-    if not scores or all(v < 0.45 for v in scores.values()):
-        scores["neutral"] = 0.55
+    if not scores or all(v < 0.55 for v in scores.values()):
+        scores["neutral"] = 0.60
         print("[NEUTRAL] Detected (fallback)")
 
     # Final result - NO BOOSTING
