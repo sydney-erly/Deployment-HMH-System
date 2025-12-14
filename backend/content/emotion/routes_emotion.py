@@ -99,18 +99,18 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
     # --------------------------------------
     # HAPPY
     # --------------------------------------
-    if mouth_mean > face_mean + (4 * adaptive) or mouth_std > (12 * adaptive):
+    if mouth_mean > face_mean + (8 * adaptive) and mouth_std > (15 * adaptive):
         scores["happy"] = 0.55
-        if mouth_std > (18 * adaptive):
+        if mouth_std > (22 * adaptive):
             scores["happy"] = max(scores.get("happy", 0), 0.75)
 
     # --------------------------------------
     # ANGRY (needs eyebrows down → darker eye region)
     # --------------------------------------
     if not mouth_open:
-        if (face_mean - eyes_mean) > (6 * adaptive) and eyes_std > (10 * adaptive):
+        if (face_mean - eyes_mean) > (10 * adaptive) and eyes_std > (15 * adaptive):
             scores["angry"] = 0.55
-            if (face_mean - eyes_mean) > (10 * adaptive):
+            if (face_mean - eyes_mean) > (15 * adaptive):
                 scores["angry"] = max(scores.get("angry", 0), 0.75)
 
     # --------------------------------------
@@ -144,18 +144,18 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
     # FAST PASS BOOST FOR EXPECTED EMOTION
     # --------------------------------------
     fast_boost = {
-        "happy": 0.01,      #.70
-        "angry": 0.01,      #.65
-        "sad": 0.01,        #.60
-        "surprised": 0.01,  #.75
-        "neutral": 0.01,    #.60
+        "happy": 0.40,      # Require real signal
+        "angry": 0.40,      # Require real signal
+        "sad": 0.35,        
+        "surprised": 0.40,  
+        "neutral": 0.30,    
     }
     if expected_norm in fast_boost:
         scores[expected_norm] = max(scores.get(expected_norm, 0), fast_boost[expected_norm])
 
-    # Strong priority: expected emotion wins if visible at all
-    if expected_norm in scores:
-        scores[expected_norm] += 0.20
+    # Moderate priority: expected emotion gets small boost if detected
+    if expected_norm in scores and scores[expected_norm] > 0.40:
+        scores[expected_norm] += 0.10
 
     # Final result
     label = max(scores, key=scores.get)
@@ -246,20 +246,19 @@ def analyze_emotion():
     label_norm = _norm(label)
     print(f"[EMOTION] Detected={label_norm} Expected={expected_norm} Conf={confidence}")
 
-    # Thresholds (very lenient)
+    # Thresholds (more strict)
     thresholds = {
-        "angry": 0.65,      #.15
-        "sad": 0.70,        #.20
-        "happy": 0.65,      #.15
-        "surprised": 0.65,  #.15
-        "neutral": 0.70,    #.20
+        "angry": 0.50,
+        "sad": 0.50,
+        "happy": 0.50,
+        "surprised": 0.50,
+        "neutral": 0.40,
     }
-    threshold = thresholds.get(expected_norm, 0.15)
+    threshold = thresholds.get(expected_norm, 0.40)
     passed = (label_norm == expected_norm and confidence >= threshold)
 
-    # Soft pass
-    if not passed and label_norm == expected_norm:
-        passed = True
+    # Only pass if both match AND meet threshold
+    # Removed soft pass to prevent false positives
 
     score = 100.0 if passed else 0.0
     attempt_id = None
