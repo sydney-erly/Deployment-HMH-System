@@ -227,13 +227,13 @@ def analyze_emotion():
 
     # Strict thresholds - must match AND meet confidence
     thresholds = {
-        "happy": 0.65,
-        "sad": 0.55,
-        "angry": 0.60,
-        "surprised": 0.65,
-        "neutral": 0.55,
+        "happy": 0.25,
+        "sad": 0.25,
+        "angry": 0.20,
+        "surprised": 0.25,
+        "neutral": 0.25,
     }
-    threshold = thresholds.get(expected_norm, 0.55)
+    threshold = thresholds.get(expected_norm, 0.25)
 
     # STRICT PASS: Must match label AND meet threshold
     passed = (label_norm == expected_norm and confidence >= threshold)
