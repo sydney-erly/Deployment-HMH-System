@@ -83,12 +83,7 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
 
     scores = {}
 
-    # Print debug info
-    print(f"[DEBUG] Face: mean={face_mean:.1f}")
-    print(f"[DEBUG] Mouth: mean={mouth_mean:.1f}, std={mouth_std:.1f}")
-    print(f"[DEBUG] Eyes: mean={eyes_mean:.1f}, std={eyes_std:.1f}")
-    print(f"[DEBUG] Eyebrows: mean={eyebrows_mean:.1f}")
-
+    
     # --------------------------------------
     # HAPPY - bright mouth, high variation (smile)
     # --------------------------------------
@@ -227,13 +222,13 @@ def analyze_emotion():
 
     # Strict thresholds - must match AND meet confidence
     thresholds = {
-        "happy": 0.25,
-        "sad": 0.25,
-        "angry": 0.20,
-        "surprised": 0.25,
-        "neutral": 0.25,
+        "happy": 0.65,
+        "sad": 0.55,
+        "angry": 0.60,
+        "surprised": 0.65,
+        "neutral": 0.55,
     }
-    threshold = thresholds.get(expected_norm, 0.25)
+    threshold = thresholds.get(expected_norm, 0.55)
 
     # STRICT PASS: Must match label AND meet threshold
     passed = (label_norm == expected_norm and confidence >= threshold)
