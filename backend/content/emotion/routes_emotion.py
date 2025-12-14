@@ -43,8 +43,9 @@ _FACE_CASCADE = cv2.CascadeClassifier(
 # -----------------------------------------------------------
 def _analyze_image(image_bytes: bytes, expected_norm: str):
     """
-    Adaptive emotion detection for adults.
-    Uses relative changes rather than absolute thresholds.
+    Accurate emotion detection
+    NO auto-pass, NO expected emotion boost.
+    Pure detection based on facial features.
     """
 
     start = time.time()
@@ -57,13 +58,8 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
 
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
 
-    # Face detect with better parameters
-    faces = _FACE_CASCADE.detectMultiScale(
-        gray, 
-        scaleFactor=1.15,
-        minNeighbors=4,
-        minSize=(80, 80)
-    )
+    # Face detect
+    faces = _FACE_CASCADE.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(100, 100))
     if len(faces) == 0:
         latency_ms = int((time.time() - start) * 1000)
         return "neutral", 0.3, {"neutral": 0.3}, latency_ms
@@ -72,14 +68,11 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
     (x, y, w, h) = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)[0]
     face = gray[y:y+h, x:x+w].astype("float32")
     face_mean = float(np.mean(face))
-    face_std = float(np.std(face))
 
     # Define regions with better precision
     mouth_region = face[int(h*0.65):int(h*0.90), int(w*0.25):int(w*0.75)]
     eyes_region = face[int(h*0.25):int(h*0.45), int(w*0.20):int(w*0.80)]
     eyebrows_region = face[int(h*0.20):int(h*0.35), int(w*0.20):int(w*0.80)]
-    upper_face = face[int(h*0.15):int(h*0.50), int(w*0.15):int(w*0.85)]
-    lower_face = face[int(h*0.50):int(h*0.92), int(w*0.15):int(w*0.85)]
 
     # Calculate metrics
     mouth_mean = float(np.mean(mouth_region)) if mouth_region.size else face_mean
@@ -87,90 +80,57 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
     eyes_mean = float(np.mean(eyes_region)) if eyes_region.size else face_mean
     eyes_std = float(np.std(eyes_region)) if eyes_region.size else 0
     eyebrows_mean = float(np.mean(eyebrows_region)) if eyebrows_region.size else face_mean
-    upper_mean = float(np.mean(upper_face)) if upper_face.size else face_mean
-    lower_mean = float(np.mean(lower_face)) if lower_face.size else face_mean
 
     scores = {}
 
-    # ADAPTIVE SCALING - use percentages instead of absolute values
-    # This adapts to each person's face naturally
-    
-    # Calculate relative differences (as % of face variation)
-    mouth_brightness_ratio = (mouth_mean - face_mean) / max(face_std, 1)
-    eyes_darkness_ratio = (face_mean - eyes_mean) / max(face_std, 1)
-    eyebrows_darkness_ratio = (face_mean - eyebrows_mean) / max(face_std, 1)
-    mouth_variation_ratio = mouth_std / max(face_std, 1)
-    
     # Print debug info
-    print(f"[DEBUG] Face: mean={face_mean:.1f}, std={face_std:.1f}")
-    print(f"[DEBUG] Mouth: mean={mouth_mean:.1f}, std={mouth_std:.1f}, brightness_ratio={mouth_brightness_ratio:.2f}, var_ratio={mouth_variation_ratio:.2f}")
-    print(f"[DEBUG] Eyes: mean={eyes_mean:.1f}, darkness_ratio={eyes_darkness_ratio:.2f}")
-    print(f"[DEBUG] Eyebrows: mean={eyebrows_mean:.1f}, darkness_ratio={eyebrows_darkness_ratio:.2f}")
+    print(f"[DEBUG] Face: mean={face_mean:.1f}")
+    print(f"[DEBUG] Mouth: mean={mouth_mean:.1f}, std={mouth_std:.1f}")
+    print(f"[DEBUG] Eyes: mean={eyes_mean:.1f}, std={eyes_std:.1f}")
+    print(f"[DEBUG] Eyebrows: mean={eyebrows_mean:.1f}")
 
     # --------------------------------------
     # HAPPY - bright mouth, high variation (smile)
-    # Uses RELATIVE brightness and variation
     # --------------------------------------
-    if mouth_brightness_ratio > 0.4 and mouth_variation_ratio > 1.2:
-        happy_score = min(0.65 + (mouth_variation_ratio - 1.2) * 0.15, 0.95)
+    if mouth_std > 18 and mouth_mean > face_mean + 5:
+        happy_score = min(0.7 + (mouth_std - 18) * 0.02, 0.95)
         scores["happy"] = happy_score
         print(f"[HAPPY] Detected: {happy_score:.2f}")
 
     # --------------------------------------
-    # SAD - dark eyes, downturned mouth, low variation
-    # Uses RELATIVE darkness
+    # SAD - dark eyes, low mouth variation, slightly down
     # --------------------------------------
-    eyes_dark = eyes_darkness_ratio > 0.5
-    mouth_down = mouth_brightness_ratio < -0.3
-    mouth_closed = mouth_variation_ratio < 0.8
-    
-    if eyes_dark and mouth_down and mouth_closed:
-        sad_score = min(0.60 + eyes_darkness_ratio * 0.2, 0.88)
+    if (face_mean - eyes_mean) > 8 and mouth_std < 12 and mouth_mean < face_mean:
+        sad_score = min(0.6 + ((face_mean - eyes_mean) - 8) * 0.03, 0.90)
         scores["sad"] = sad_score
         print(f"[SAD] Detected: {sad_score:.2f}")
 
     # --------------------------------------
-    # ANGRY - very dark eyebrows/eyes, tense face
-    # Uses RELATIVE darkness + overall tension
+    # ANGRY - very dark eyebrows/eyes, mouth closed, tense
     # --------------------------------------
-    brows_very_dark = eyebrows_darkness_ratio > 0.6
-    eyes_dark_angry = eyes_darkness_ratio > 0.5
-    mouth_tense = mouth_variation_ratio < 1.0 and abs(mouth_brightness_ratio) < 0.3
-    
-    if brows_very_dark and eyes_dark_angry and mouth_tense:
-        angry_score = min(0.60 + eyebrows_darkness_ratio * 0.25, 0.92)
+    if (face_mean - eyebrows_mean) > 12 and (face_mean - eyes_mean) > 10 and mouth_std < 15:
+        angry_score = min(0.65 + ((face_mean - eyebrows_mean) - 12) * 0.03, 0.92)
         scores["angry"] = angry_score
         print(f"[ANGRY] Detected: {angry_score:.2f}")
 
     # --------------------------------------
     # SURPRISED - wide open mouth, bright eyes
-    # Uses RELATIVE mouth opening and eye brightness
     # --------------------------------------
-    mouth_very_open = mouth_variation_ratio > 1.8  # Much higher variation
-    mouth_dark_cavity = mouth_brightness_ratio < -0.5  # Dark open mouth
-    eyes_wide = (eyes_mean - face_mean) > 3  # Slightly brighter eyes
-    
-    if mouth_very_open and mouth_dark_cavity:
-        surprised_score = min(0.65 + (mouth_variation_ratio - 1.8) * 0.15, 0.95)
-        if eyes_wide:
-            surprised_score += 0.08
+    if mouth_std > 25 and mouth_mean < face_mean - 8:
+        surprised_score = min(0.7 + (mouth_std - 25) * 0.02, 0.95)
+        if eyes_mean > face_mean + 3:  # Wide eyes bonus
+            surprised_score += 0.1
         scores["surprised"] = min(surprised_score, 0.98)
         print(f"[SURPRISED] Detected: {surprised_score:.2f}")
 
     # --------------------------------------
     # NEUTRAL - fallback when nothing strong detected
-    # Higher confidence when features are balanced
     # --------------------------------------
-    if not scores or all(v < 0.60 for v in scores.values()):
-        balanced = (
-            abs(mouth_brightness_ratio) < 0.4 and 
-            abs(eyes_darkness_ratio) < 0.4 and
-            0.7 < mouth_variation_ratio < 1.3
-        )
-        scores["neutral"] = 0.70 if balanced else 0.50
-        print(f"[NEUTRAL] Detected (balanced={balanced})")
+    if not scores or all(v < 0.55 for v in scores.values()):
+        scores["neutral"] = 0.60
+        print("[NEUTRAL] Detected (fallback)")
 
-    # Final result
+    # Final result - NO BOOSTING
     label = max(scores, key=scores.get)
     confidence = float(min(scores[label], 1.0))
     latency_ms = int((time.time() - start) * 1000)
