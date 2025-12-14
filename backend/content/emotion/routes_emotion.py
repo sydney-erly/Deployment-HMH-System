@@ -141,11 +141,11 @@ def _analyze_image(image_bytes: bytes, expected_norm: str):
     # FAST PASS BOOST FOR EXPECTED EMOTION
     # --------------------------------------
     fast_boost = {
-        "happy": 0.70,
-        "angry": 0.65,
-        "sad": 0.60,
-        "surprised": 0.75,
-        "neutral": 0.60,
+        "happy": 0.99, #.70
+        "angry": 0.99, #.65
+        "sad": 0.99,    #.60
+        "surprised": 0.99,  #.75
+        "neutral": 0.99,        #.60
     }
 
     if expected_norm in fast_boost:
@@ -250,11 +250,11 @@ def analyze_emotion():
 
     # Thresholds (very lenient)
     thresholds = {
-        "angry": 0.15,
-        "sad": 0.20,
-        "happy": 0.15,
-        "surprised": 0.15,
-        "neutral": 0.20,
+        "angry": 0.65, #.15
+        "sad": 0.70,   #.20
+        "happy": 0.65, #.15
+        "surprised": 0.65, #.15
+        "neutral": 0.70, #.20
     }
     threshold = thresholds.get(expected_norm, 0.15)
 
