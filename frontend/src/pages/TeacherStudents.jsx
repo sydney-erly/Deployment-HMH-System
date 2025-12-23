@@ -14,6 +14,8 @@ import card4 from "../assets/card4.png";
 import { GoHome } from "react-icons/go";
 import { PiStudentBold } from "react-icons/pi";
 import { SiGoogleanalytics } from "react-icons/si";
+import { MdMenuBook } from "react-icons/md";
+
 
 // Fallback avatar SVG
 const fallbackAvatar =
@@ -222,6 +224,19 @@ export default function TeacherStudents() {
             <SiGoogleanalytics className="text-xl" />
             <span>Analytics</span>
           </Link>
+
+          <Link
+            to="/teacher/lesson-management"
+            className={`flex items-center gap-3 px-3 py-2 rounded-xl mb-2 transition-all font-medium ${
+              location.pathname.startsWith("/teacher/lesson-management")
+                ? "bg-white text-[#2E4bff] font-semibold"
+                : "hover:bg-white/10"
+            }`}
+          >
+            <MdMenuBook className="text-xl" />
+            <span>Manage</span>
+          </Link>
+
         </div>
 
         <div className="pt-2 border-t border-white/20 flex justify-center">
@@ -283,6 +298,18 @@ export default function TeacherStudents() {
         >
           <SiGoogleanalytics className="text-xl" /> <span>Analytics</span>
         </Link>
+        <Link
+          to="/teacher/lesson-management"
+          className={`flex items-center gap-3 px-3 py-2 rounded-xl mb-2 font-medium ${
+            location.pathname.startsWith("/teacher/lesson-management")
+              ? "bg-white text-[#2E4bff]"
+              : "hover:bg-white/10"
+          }`}
+        >
+          <MdMenuBook className="text-xl" />
+          <span>Lessons</span>
+        </Link>
+
 
         <div className="mt-auto pt-2 border-t border-white/20 flex justify-center">
           <button

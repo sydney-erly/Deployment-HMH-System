@@ -171,6 +171,15 @@
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 }
 
+
+
+.hide-scrollbar {
+  scrollbar-width: none;      /* Firefox */
+  -ms-overflow-style: none;   /* IE/Edge */
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;              /* Chrome/Safari */
+}
 /* ========================================================================
    PDF-ONLY ZOOM MODE (Teacher Report Capture)
    Does NOT affect the live UI. Only active during JS-triggered capture.

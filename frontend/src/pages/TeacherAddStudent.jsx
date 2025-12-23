@@ -1,5 +1,5 @@
 // TeacherAddStudent.jsx
-// fully updated 2025-12-02
+// fully updated 2025-12-22
 
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
@@ -9,6 +9,7 @@ import { FiLogOut } from "react-icons/fi";
 import { GoHome } from "react-icons/go";
 import { PiStudentBold } from "react-icons/pi";
 import { SiGoogleanalytics } from "react-icons/si";
+import { MdMenuBook } from "react-icons/md"; // ✅ ADD
 import hmhIcon from "../assets/hmh_icon.png";
 
 export default function TeacherAddStudent() {
@@ -95,7 +96,11 @@ export default function TeacherAddStudent() {
       <aside className="hidden lg:flex fixed top-0 left-0 h-screen w-64 bg-[#2E4bff] text-white px-6 py-8 flex flex-col justify-between shadow-lg">
         <div>
           <div className="flex flex-col items-center mb-8">
-            <img src={hmhIcon} alt="HearMyHeart Icon" className="w-auto h-18 mb-3 object-contain" />
+            <img
+              src={hmhIcon}
+              alt="HearMyHeart Icon"
+              className="w-auto h-18 mb-3 object-contain"
+            />
             <div className="text-2xl font-bold">HearMyHeart</div>
           </div>
           <SidebarLinks location={location} />
@@ -131,7 +136,11 @@ export default function TeacherAddStudent() {
         onTouchEnd={onDrawerTouchEnd}
       >
         <div className="flex flex-col items-center mb-6">
-          <img src={hmhIcon} alt="HearMyHeart Icon" className="w-auto h-15 mb-2 object-contain" />
+          <img
+            src={hmhIcon}
+            alt="HearMyHeart Icon"
+            className="w-auto h-15 mb-2 object-contain"
+          />
           <div className="text-2xl font-bold">HearMyHeart</div>
         </div>
         <SidebarLinks location={location} />
@@ -192,6 +201,19 @@ function SidebarLinks({ location }) {
       >
         <SiGoogleanalytics className="text-xl" />
         <span>Analytics</span>
+      </Link>
+
+      {/* ✅ ADD: Manage */}
+      <Link
+        to="/teacher/lesson-management"
+        className={`flex items-center gap-3 px-3 py-2 rounded-xl mb-2 font-medium ${
+          path.startsWith("/teacher/lesson-management")
+            ? "bg-white text-[#2E4bff] font-semibold"
+            : "hover:bg-white/10"
+        }`}
+      >
+        <MdMenuBook className="text-xl" />
+        <span>Manage</span>
       </Link>
     </>
   );
@@ -289,57 +311,234 @@ function AddStudentForm() {
     <div className="flex flex-col gap-10 w-full">
       {/* Personal Info */}
       <Section title="Personal Information">
-        <Input id="first_name" label="First Name" required v={form.first_name} onC={(v) => setVal("first_name", v)} refMap={fieldRefs} errorField={errorField} />
-        <Input id="middle_name" label="Middle Name" required v={form.middle_name} onC={(v) => setVal("middle_name", v)} refMap={fieldRefs} errorField={errorField} />
-        <Input id="last_name" label="Last Name" required v={form.last_name} onC={(v) => setVal("last_name", v)} refMap={fieldRefs} errorField={errorField} />
+        <Input
+          id="first_name"
+          label="First Name"
+          required
+          v={form.first_name}
+          onC={(v) => setVal("first_name", v)}
+          refMap={fieldRefs}
+          errorField={errorField}
+        />
+        <Input
+          id="middle_name"
+          label="Middle Name"
+          required
+          v={form.middle_name}
+          onC={(v) => setVal("middle_name", v)}
+          refMap={fieldRefs}
+          errorField={errorField}
+        />
+        <Input
+          id="last_name"
+          label="Last Name"
+          required
+          v={form.last_name}
+          onC={(v) => setVal("last_name", v)}
+          refMap={fieldRefs}
+          errorField={errorField}
+        />
 
-        <Input id="birthday" label="Birthday" type="date" required v={form.birthday} onC={(v) => setVal("birthday", v)} refMap={fieldRefs} errorField={errorField} />
+        <Input
+          id="birthday"
+          label="Birthday"
+          type="date"
+          required
+          v={form.birthday}
+          onC={(v) => setVal("birthday", v)}
+          refMap={fieldRefs}
+          errorField={errorField}
+        />
 
-        <Select id="sex" label="Gender" required v={form.sex} onC={(v) => setVal("sex", v)} items={["FEMALE", "MALE"]} refMap={fieldRefs} errorField={errorField} />
+        <Select
+          id="sex"
+          label="Gender"
+          required
+          v={form.sex}
+          onC={(v) => setVal("sex", v)}
+          items={["FEMALE", "MALE"]}
+          refMap={fieldRefs}
+          errorField={errorField}
+        />
 
-        <Input id="diagnosis" label="Diagnosis" required v={form.diagnosis} onC={(v) => setVal("diagnosis", v)} refMap={fieldRefs} errorField={errorField} />
+        <Input
+          id="diagnosis"
+          label="Diagnosis"
+          required
+          v={form.diagnosis}
+          onC={(v) => setVal("diagnosis", v)}
+          refMap={fieldRefs}
+          errorField={errorField}
+        />
 
-        <Select id="speech_level" label="Speech Level" required v={form.speech_level} onC={(v) => setVal("speech_level", v)} items={["non_verbal", "emerging", "verbal"]} refMap={fieldRefs} errorField={errorField} />
+        <Select
+          id="speech_level"
+          label="Speech Level"
+          required
+          v={form.speech_level}
+          onC={(v) => setVal("speech_level", v)}
+          items={["non_verbal", "emerging", "verbal"]}
+          refMap={fieldRefs}
+          errorField={errorField}
+        />
 
-        <Select id="room_assignment" label="Room Assignment" required v={form.room_assignment} onC={(v) => setVal("room_assignment", v)} items={["Room A", "Room B", "Room C", "Room D"]} refMap={fieldRefs} errorField={errorField} />
+        <Select
+          id="room_assignment"
+          label="Room Assignment"
+          required
+          v={form.room_assignment}
+          onC={(v) => setVal("room_assignment", v)}
+          items={["Room A", "Room B", "Room C", "Room D"]}
+          refMap={fieldRefs}
+          errorField={errorField}
+        />
 
-        <Select id="schedule" label="Schedule" required v={form.schedule} onC={(v) => setVal("schedule", v)} items={["M-W", "T-TH", "F"]} refMap={fieldRefs} errorField={errorField} />
+        <Select
+          id="schedule"
+          label="Schedule"
+          required
+          v={form.schedule}
+          onC={(v) => setVal("schedule", v)}
+          items={["M-W", "T-TH", "F"]}
+          refMap={fieldRefs}
+          errorField={errorField}
+        />
 
         {/* FIXED TIME FIELD */}
-        <Input id="class_time" label="Time" required type="time" v={form.class_time} onC={(v) => setVal("class_time", v)} refMap={fieldRefs} errorField={errorField} />
+        <Input
+          id="class_time"
+          label="Time"
+          required
+          type="time"
+          v={form.class_time}
+          onC={(v) => setVal("class_time", v)}
+          refMap={fieldRefs}
+          errorField={errorField}
+        />
       </Section>
 
       {/* Background */}
       <Section title="Student Background">
-        <Select id="enrollment_status" label="Enrollment Status" v={form.enrollment_status} onC={(v) => setVal("enrollment_status", v)} items={["OLD", "NEW"]} refMap={fieldRefs} />
-        <Input id="grade_level" label="Grade Level" v={form.grade_level} onC={(v) => setVal("grade_level", v)} refMap={fieldRefs} />
-        <Input id="school_last_attended" label="School Last Attended" v={form.school_last_attended} onC={(v) => setVal("school_last_attended", v)} refMap={fieldRefs} />
-        <Input id="address" label="Address" v={form.address} onC={(v) => setVal("address", v)} refMap={fieldRefs} />
-        <Input id="religion" label="Religion" v={form.religion} onC={(v) => setVal("religion", v)} refMap={fieldRefs} />
-        <Input id="father_name" label="Father's Name" v={form.father_name} onC={(v) => setVal("father_name", v)} refMap={fieldRefs} />
-        <Input id="mother_name" label="Mother's Name" v={form.mother_name} onC={(v) => setVal("mother_name", v)} refMap={fieldRefs} />
-        <Input id="contact_number" label="Contact Number" v={form.contact_number} onC={(v) => setVal("contact_number", v)} refMap={fieldRefs} />
-        <Input id="email" label="Email" v={form.email} onC={(v) => setVal("email", v)} refMap={fieldRefs} />
-        <Input id="guardian_name" label="Guardian Name" v={form.guardian_name} onC={(v) => setVal("guardian_name", v)} refMap={fieldRefs} />
-        <Input id="guardian_relationship" label="Guardian Relationship" v={form.guardian_relationship} onC={(v) => setVal("guardian_relationship", v)} refMap={fieldRefs} />
+        <Select
+          id="enrollment_status"
+          label="Enrollment Status"
+          v={form.enrollment_status}
+          onC={(v) => setVal("enrollment_status", v)}
+          items={["OLD", "NEW"]}
+          refMap={fieldRefs}
+        />
+        <Input
+          id="grade_level"
+          label="Grade Level"
+          v={form.grade_level}
+          onC={(v) => setVal("grade_level", v)}
+          refMap={fieldRefs}
+        />
+        <Input
+          id="school_last_attended"
+          label="School Last Attended"
+          v={form.school_last_attended}
+          onC={(v) => setVal("school_last_attended", v)}
+          refMap={fieldRefs}
+        />
+        <Input
+          id="address"
+          label="Address"
+          v={form.address}
+          onC={(v) => setVal("address", v)}
+          refMap={fieldRefs}
+        />
+        <Input
+          id="religion"
+          label="Religion"
+          v={form.religion}
+          onC={(v) => setVal("religion", v)}
+          refMap={fieldRefs}
+        />
+        <Input
+          id="father_name"
+          label="Father's Name"
+          v={form.father_name}
+          onC={(v) => setVal("father_name", v)}
+          refMap={fieldRefs}
+        />
+        <Input
+          id="mother_name"
+          label="Mother's Name"
+          v={form.mother_name}
+          onC={(v) => setVal("mother_name", v)}
+          refMap={fieldRefs}
+        />
+        <Input
+          id="contact_number"
+          label="Contact Number"
+          v={form.contact_number}
+          onC={(v) => setVal("contact_number", v)}
+          refMap={fieldRefs}
+        />
+        <Input
+          id="email"
+          label="Email"
+          v={form.email}
+          onC={(v) => setVal("email", v)}
+          refMap={fieldRefs}
+        />
+        <Input
+          id="guardian_name"
+          label="Guardian Name"
+          v={form.guardian_name}
+          onC={(v) => setVal("guardian_name", v)}
+          refMap={fieldRefs}
+        />
+        <Input
+          id="guardian_relationship"
+          label="Guardian Relationship"
+          v={form.guardian_relationship}
+          onC={(v) => setVal("guardian_relationship", v)}
+          refMap={fieldRefs}
+        />
       </Section>
 
       {/* Buttons */}
       <div className="flex justify-end gap-3 pb-10">
-        <button onClick={() => nav("/teacher/students")} className="px-5 py-2 rounded-xl border border-gray-300 hover:bg-gray-100 transition">Cancel</button>
-        <button onClick={handleSubmit} className="px-6 py-2 rounded-xl bg-[#2E4bff] text-white font-medium hover:brightness-110 transition">Save</button>
+        <button
+          onClick={() => nav("/teacher/students")}
+          className="px-5 py-2 rounded-xl border border-gray-300 hover:bg-gray-100 transition"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSubmit}
+          className="px-6 py-2 rounded-xl bg-[#2E4bff] text-white font-medium hover:brightness-110 transition"
+        >
+          Save
+        </button>
       </div>
 
       {/* Confirm modal */}
       {confirmOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl text-center">
-            <h2 className="text-xl font-semibold text-[#2E4bff] mb-3">Confirm Add Student</h2>
-            <p className="text-gray-600 mb-6">Are you sure you want to add this student?</p>
+            <h2 className="text-xl font-semibold text-[#2E4bff] mb-3">
+              Confirm Add Student
+            </h2>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to add this student?
+            </p>
 
             <div className="flex justify-center gap-4">
-              <button onClick={() => setConfirmOpen(false)} className="px-4 py-2 rounded-xl border border-gray-300 hover:bg-gray-100 transition">Cancel</button>
-              <button onClick={confirmSave} className="px-5 py-2 rounded-xl bg-[#2E4bff] text-white hover:brightness-110 transition">Yes, Add Student</button>
+              <button
+                onClick={() => setConfirmOpen(false)}
+                className="px-4 py-2 rounded-xl border border-gray-300 hover:bg-gray-100 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmSave}
+                className="px-5 py-2 rounded-xl bg-[#2E4bff] text-white hover:brightness-110 transition"
+              >
+                Yes, Add Student
+              </button>
             </div>
           </div>
         </div>
@@ -351,10 +550,15 @@ function AddStudentForm() {
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl text-center">
             {saveError ? (
               <>
-                <h2 className="text-xl font-semibold text-red-600 mb-3">Error</h2>
+                <h2 className="text-xl font-semibold text-red-600 mb-3">
+                  Error
+                </h2>
                 <p className="text-gray-700 mb-4">
-                  Failed to add student.<br />
-                  <span className="font-semibold text-red-500">{saveError}</span>
+                  Failed to add student.
+                  <br />
+                  <span className="font-semibold text-red-500">
+                    {saveError}
+                  </span>
                 </p>
                 <button
                   onClick={() => setSuccessOpen(false)}
@@ -365,10 +569,15 @@ function AddStudentForm() {
               </>
             ) : (
               <>
-                <h2 className="text-xl font-semibold text-green-600 mb-3">Student Added!</h2>
+                <h2 className="text-xl font-semibold text-green-600 mb-3">
+                  Student Added!
+                </h2>
                 <p className="text-gray-700 mb-4">
-                  The student has been successfully added.<br />
-                  <span className="font-semibold text-[#2E4bff]">Login ID: {newLoginId}</span>
+                  The student has been successfully added.
+                  <br />
+                  <span className="font-semibold text-[#2E4bff]">
+                    Login ID: {newLoginId}
+                  </span>
                 </p>
                 <button
                   onClick={() => {
@@ -392,13 +601,26 @@ function AddStudentForm() {
 function Section({ title, children }) {
   return (
     <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
-      <div className="bg-[#2E4bff] text-white px-10 py-3 text-lg font-semibold">{title}</div>
-      <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">{children}</div>
+      <div className="bg-[#2E4bff] text-white px-10 py-3 text-lg font-semibold">
+        {title}
+      </div>
+      <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+        {children}
+      </div>
     </div>
   );
 }
 
-function Input({ id, label, v, onC, type = "text", refMap, errorField, required = false }) {
+function Input({
+  id,
+  label,
+  v,
+  onC,
+  type = "text",
+  refMap,
+  errorField,
+  required = false,
+}) {
   const ref = useRef(null);
   useEffect(() => {
     if (refMap && id) refMap.current[id] = ref.current;
@@ -425,7 +647,16 @@ function Input({ id, label, v, onC, type = "text", refMap, errorField, required 
   );
 }
 
-function Select({ id, label, v, onC, items, refMap, errorField, required = false }) {
+function Select({
+  id,
+  label,
+  v,
+  onC,
+  items,
+  refMap,
+  errorField,
+  required = false,
+}) {
   const ref = useRef(null);
   useEffect(() => {
     if (refMap && id) refMap.current[id] = ref.current;

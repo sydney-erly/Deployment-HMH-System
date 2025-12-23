@@ -15,6 +15,7 @@ import TeacherAddStudent from "./pages/TeacherAddStudent";
 import TeacherAnalytics from "./pages/TeacherAnalytics";
 import TeacherStudentInfo from "./pages/TeacherStudentInfo";
 import TeacherStudentProgress from "./pages/TeacherStudentProgress";
+import LessonManagement from "./pages/LessonManagement";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import TeacherProfile from "./pages/TeacherProfile";
@@ -105,6 +106,15 @@ export default function App() {
           element={
             <ProtectedRoute role="teacher">
               <TeacherAnalytics />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route 
+          path="/teacher/lesson-management"
+          element={
+            <ProtectedRoute role="teacher">
+              <LessonManagement />
             </ProtectedRoute>
           }
         />

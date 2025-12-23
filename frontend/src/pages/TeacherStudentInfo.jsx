@@ -12,7 +12,7 @@ import { FiLogOut } from "react-icons/fi";
 import { GoHome } from "react-icons/go";
 import { PiStudentBold } from "react-icons/pi";
 import { SiGoogleanalytics } from "react-icons/si";
-import { MdDeleteOutline } from "react-icons/md";
+import { MdDeleteOutline, MdMenuBook } from "react-icons/md"; // ✅ FIX: added MdMenuBook
 import hmhIcon from "../assets/hmh_icon.png";
 
 export default function TeacherStudentInfo() {
@@ -341,7 +341,7 @@ export default function TeacherStudentInfo() {
         </div>
         <div className="pt-2 border-t border-white/20 flex justify-center">
           <button
-            className="p-3 rounded-full hover:bg:white/10 hover:bg-white/10"
+            className="p-3 rounded-full hover:bg-white/10"
             onClick={() => {
               auth.signout();
               nav("/login");
@@ -810,6 +810,7 @@ function SidebarLinks({ location }) {
         <GoHome className="text-xl" />
         <span>Dashboard</span>
       </Link>
+
       <Link
         to="/teacher/students"
         className={`flex items-center gap-3 px-3 py-2 rounded-xl mb-2 font-medium ${
@@ -822,6 +823,7 @@ function SidebarLinks({ location }) {
         <PiStudentBold className="text-xl" />
         <span>Students</span>
       </Link>
+
       <Link
         to="/teacher/analytics"
         className={`flex items-center gap-3 px-3 py-2 rounded-xl mb-2 font-medium ${
@@ -832,6 +834,19 @@ function SidebarLinks({ location }) {
       >
         <SiGoogleanalytics className="text-xl" />
         <span>Analytics</span>
+      </Link>
+
+  
+      <Link
+        to="/teacher/lesson-management"
+        className={`flex items-center gap-3 px-3 py-2 rounded-xl mb-2 transition-all font-medium ${
+          location.pathname.startsWith("/teacher/lesson-management")
+            ? "bg-white text-[#2E4bff] font-semibold"
+            : "hover:bg-white/10"
+        }`}
+      >
+        <MdMenuBook className="text-xl" />
+        <span>Manage</span>
       </Link>
     </>
   );

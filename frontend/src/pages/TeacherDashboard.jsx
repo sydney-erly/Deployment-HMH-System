@@ -1,5 +1,5 @@
 // src/pages/TeacherDashboard.jsx
-//updated 11/20/2025 03:57AM
+//updated 17/12/2025
 import hmhIcon from "../assets/hmh_icon.png";
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
@@ -22,6 +22,8 @@ import { PiStudentBold } from "react-icons/pi";
 import { SiGoogleanalytics } from "react-icons/si";
 import { FiUsers, FiLogOut } from "react-icons/fi";
 import InitialAvatar from "../components/InitialAvatar";
+import { MdMenuBook } from "react-icons/md";
+
 
 export default function TeacherDashboard() {
   const nav = useNavigate();
@@ -257,8 +259,20 @@ export default function TeacherDashboard() {
               <SiGoogleanalytics className="text-xl" />
               <span>Analytics</span>
             </Link>
-          </div>
 
+            <Link
+            to="/teacher/lesson-management"
+            className={`flex items-center gap-3 px-3 py-2 rounded-xl mb-2 transition-all font-medium ${
+              location.pathname.startsWith("/teacher/lesson-management")
+                ? "bg-white text-[#2E4bff] font-semibold"
+                : "hover:bg-white/10"
+            }`}
+          >
+            <MdMenuBook className="text-xl" />
+            <span>Manage</span>
+          </Link>
+
+          </div>
           <div className="pt-2 border-t border-white/20 flex justify-center">
             <button
               className="p-3 rounded-full hover:bg-white/10 transition-transform"
@@ -330,6 +344,20 @@ export default function TeacherDashboard() {
           >
             <SiGoogleanalytics className="text-xl" /> <span>Analytics</span>
           </Link>
+
+          <Link
+            to="/teacher/lesson-management"
+            onClick={() => setNavOpen(false)}
+            className={`flex items-center gap-3 px-3 py-2 rounded-xl mb-2 transition-all font-medium ${
+              location.pathname.startsWith("/teacher/lesson-management")
+                ? "bg-white text-[#2E4bff] font-semibold"
+                : "hover:bg-white/10"
+            }`}
+          >
+            <MdMenuBook className="text-xl" />
+            <span>Manage</span>
+          </Link>
+
 
           <div className="mt-auto pt-2 border-t border-white/20 flex justify-center">
             <button

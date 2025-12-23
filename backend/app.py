@@ -15,6 +15,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 from auth.routes import auth_bp
 from student.routes import student_bp
 from teacher.routes import teacher_bp
+from teacher.manage_lessons import manage_lessons_bp
 from content.routes import content_bp
 from content.asr.routes_asr_analyze import asr_bp
 from content.emotion.routes_emotion import emotion_bp
@@ -54,6 +55,7 @@ def create_app():
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(student_bp, url_prefix="/api/student")
     app.register_blueprint(teacher_bp, url_prefix="/api/teacher")
+    app.register_blueprint(manage_lessons_bp, url_prefix="/api/teacher/manage-lessons")
     app.register_blueprint(grad_bp, url_prefix="/api/student")
     app.register_blueprint(asr_bp, url_prefix="/api/asr")
     app.register_blueprint(emotion_bp, url_prefix="/api/emotion")
