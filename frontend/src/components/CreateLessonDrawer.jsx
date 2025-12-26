@@ -4,7 +4,8 @@ import RightDrawer from "./RightDrawer";
 import FileDropzone from "./FileDropzone";
 
 export default function CreateLessonDrawer({ open, onClose, chapterId, onCreated, token }) {
-  const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+  const API_BASE = import.meta.env.VITE_API_BASE || "/api";
+
 
   const [form, setForm] = useState({
     title_en: "",
@@ -46,14 +47,14 @@ export default function CreateLessonDrawer({ open, onClose, chapterId, onCreated
     setCreating(true);
     try {
       const fd = new FormData();
-      // ✅ BACKEND EXPECTS THESE KEYS:
+      //  BACKEND EXPECTS THESE KEYS:
       fd.append("lesson_title_en", form.title_en.trim());
       fd.append("lesson_title_tl", form.title_tl.trim());
       fd.append("lesson_description_en", form.desc_en || "");
       fd.append("lesson_description_tl", form.desc_tl || "");
       fd.append("lesson_cover", cover); // REQUIRED
 
-      // ✅ BACKEND ROUTE (chapterId IN URL):
+      //  BACKEND ROUTE (chapterId IN URL):
       const res = await fetch(`${API_BASE}/teacher/manage-lessons/chapters/${chapterId}/lessons`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },

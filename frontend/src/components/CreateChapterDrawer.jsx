@@ -4,7 +4,8 @@ import RightDrawer from "./RightDrawer";
 import FileDropzone from "./FileDropzone";
 
 export default function CreateChapterDrawer({ open, onClose, onCreated, token }) {
-  const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+  const API_BASE = import.meta.env.VITE_API_BASE || "/api";
+
 
   const [form, setForm] = useState({ title_en: "", title_tl: "" });
   const [image, setImage] = useState(null); // REQUIRED
