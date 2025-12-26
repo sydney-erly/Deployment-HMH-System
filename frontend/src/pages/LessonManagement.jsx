@@ -2,6 +2,8 @@
 // Teacher-friendly Lesson Management
 // Chapters -> Lessons -> Activities -> Add Question (dropdown) -> Edit modal (upload dropzones)
 // updated 23/12/2025 (+ hover pencil edit for chapter/lesson)
+// updated 27/12/2025 (+ drag-drop reorder + long-press drag on mobile)
+// updated 27/12/2025 (+ soft-delete activity + resequence-safe UI numbering)
 
 import hmhIcon from "../assets/hmh_icon.png";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -12,11 +14,115 @@ import { GoHome } from "react-icons/go";
 import { PiStudentBold } from "react-icons/pi";
 import { SiGoogleanalytics } from "react-icons/si";
 import { MdMenuBook } from "react-icons/md";
-import { FiLogOut, FiArrowLeft, FiUploadCloud, FiImage, FiMusic, FiEdit2, FiX } from "react-icons/fi";
+import {
+  FiLogOut,
+  FiArrowLeft,
+  FiUploadCloud,
+  FiImage,
+  FiMusic,
+  FiEdit2,
+  FiX,
+  FiMove,
+} from "react-icons/fi";
 
 import CreateChapterDrawer from "../components/CreateChapterDrawer";
 import CreateLessonDrawer from "../components/CreateLessonDrawer";
 import RightDrawer from "../components/RightDrawer";
+
+//  Drag & Drop (DnD Kit)
+import {
+  DndContext,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  arrayMove,
+  rectSortingStrategy,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+
+/* -------------------------
+   DnD: Drag handle + wrappers
+-------------------------- */
+function DragHandle({ listeners, attributes, className = "" }) {
+  return (
+    <button
+      type="button"
+      className={
+        "opacity-0 group-hover:opacity-100 transition rounded-2xl bg-white/95 border border-gray-200 shadow-sm p-2 hover:bg-gray-50 cursor-grab active:cursor-grabbing " +
+        className
+      }
+      title="Long-press (mobile) or drag (desktop) to reorder"
+      {...attributes}
+      {...listeners}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onMouseDown={(e) => {
+        // prevent “click” drag handle from triggering card click
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onTouchStart={(e) => {
+        // prevent immediate tap from triggering parent click
+        e.stopPropagation();
+      }}
+    >
+      <FiMove />
+    </button>
+  );
+}
+
+// Grid card (chapters/lessons)
+function SortableCard({ id, children }) {
+  const { setNodeRef, transform, transition, isDragging, attributes, listeners } =
+    useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.65 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="relative group">
+      <DragHandle
+        attributes={attributes}
+        listeners={listeners}
+        className="absolute top-3 left-3 z-10"
+      />
+      {children}
+    </div>
+  );
+}
+
+// Vertical row (activities)
+function SortableRow({ id, children }) {
+  const { setNodeRef, transform, transition, isDragging, attributes, listeners } =
+    useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.65 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="relative group">
+      <DragHandle
+        attributes={attributes}
+        listeners={listeners}
+        className="absolute top-4 left-3 z-10 bg-white"
+      />
+      <div className="pl-14">{children}</div>
+    </div>
+  );
+}
 
 export default function LessonManagement() {
   const nav = useNavigate();
@@ -26,8 +132,7 @@ export default function LessonManagement() {
   const isTeacher = auth.isTeacher();
   if (!isTeacher) return <Navigate to="/login" replace />;
 
- const API_BASE = import.meta.env.VITE_API_BASE || "/api";
-
+  const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
   // Token reactive
   const [token, setToken] = useState(() => auth.token());
@@ -45,6 +150,27 @@ export default function LessonManagement() {
     }
     return () => unsub?.();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // -------------------------
+  // ✅ DnD sensors (desktop + mobile long-press)
+  // -------------------------
+  // - PointerSensor: drag after moving 8px (prevents accidental click-drag)
+  // - TouchSensor: drag after long-press delay (prevents scroll hijack)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 280, tolerance: 6 },
+    })
+  );
+
+  async function saveReorder(path, ids) {
+    // expects backend endpoints to accept: { ids: [..] }
+    await apiFetch(path, {
+      token,
+      method: "PATCH",
+      body: { ids },
+    });
+  }
 
   // -------------------------
   // Mobile nav drawer (left)
@@ -133,7 +259,7 @@ export default function LessonManagement() {
   const [showCreateLesson, setShowCreateLesson] = useState(false);
 
   // -------------------------
-  // Chapter/Lesson Edit Modal (NEW)
+  // Chapter/Lesson Edit Modal
   // -------------------------
   const [metaEditOpen, setMetaEditOpen] = useState(false);
   const [metaEditKind, setMetaEditKind] = useState(null); // "chapter" | "lesson"
@@ -192,6 +318,17 @@ export default function LessonManagement() {
     setMetaForm((p) => ({ ...p, file, filePreview: preview }));
   }
 
+  function openFilePicker(accept, onPick) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    input.onchange = (e) => {
+      const file = e.target.files?.[0];
+      if (file) onPick(file);
+    };
+    input.click();
+  }
+
   async function saveMeta() {
     if (!token || !metaEditKind || !metaEditItem?.id) return;
 
@@ -206,18 +343,20 @@ export default function LessonManagement() {
         fd.append("title_tl", metaForm.title_tl || "");
         if (metaForm.file) fd.append("chapter_bg", metaForm.file);
 
-        const res = await fetch(`${API_BASE}/teacher/manage-lessons/chapters/${metaEditItem.id}`, {
-          method: "PATCH",
-          headers: { Authorization: `Bearer ${token}` },
-          body: fd,
-        });
+        const res = await fetch(
+          `${API_BASE}/teacher/manage-lessons/chapters/${metaEditItem.id}`,
+          {
+            method: "PATCH",
+            headers: { Authorization: `Bearer ${token}` },
+            body: fd,
+          }
+        );
 
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data?.error || "Failed to update chapter");
 
         const updated = data?.chapter;
         setChapters((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-        // if currently selected chapter is this one, update it too
         if (selectedChapter?.id === updated.id) setSelectedChapter(updated);
       } else {
         fd.append("lesson_title_en", metaForm.title_en || "");
@@ -226,11 +365,14 @@ export default function LessonManagement() {
         fd.append("lesson_description_tl", metaForm.description_tl ?? "");
         if (metaForm.file) fd.append("lesson_cover", metaForm.file);
 
-        const res = await fetch(`${API_BASE}/teacher/manage-lessons/lessons/${metaEditItem.id}`, {
-          method: "PATCH",
-          headers: { Authorization: `Bearer ${token}` },
-          body: fd,
-        });
+        const res = await fetch(
+          `${API_BASE}/teacher/manage-lessons/lessons/${metaEditItem.id}`,
+          {
+            method: "PATCH",
+            headers: { Authorization: `Bearer ${token}` },
+            body: fd,
+          }
+        );
 
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data?.error || "Failed to update lesson");
@@ -252,31 +394,25 @@ export default function LessonManagement() {
   // -------------------------
   // Editor modal (Activities)
   // -------------------------
-  const [editing, setEditing] = useState(null); // activity object or draft object
+  const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const [uploading, setUploading] = useState(false);
   const [errors, setErrors] = useState({});
 
-  // Teacher-friendly edit form (KEY-ONLY)
   const [form, setForm] = useState({
     type: "",
     layout: "",
     prompt: "",
-    // prompt media (local preview + server refs)
     prompt_image: "",
-    prompt_image_path: "", // server path OR temp token/path
+    prompt_image_path: "",
     prompt_audio: "",
     prompt_audio_path: "",
-
-    // choices: { key, image, image_path, audio, audio_path }
     choices: [],
     correct: "",
-
     expected_emotion: "",
     expected_speech: "",
-
     temp: {
       prompt_image: null,
       prompt_audio: null,
@@ -284,9 +420,8 @@ export default function LessonManagement() {
     },
   });
 
-  // Add Question modal (dropdown)
   const [addOpen, setAddOpen] = useState(false);
-  const [addKind, setAddKind] = useState("sound"); // choose|sound|image|sequence|asr|emotion
+  const [addKind, setAddKind] = useState("sound");
 
   // Body bg
   useEffect(() => {
@@ -325,7 +460,10 @@ export default function LessonManagement() {
       setSelectedLesson(null);
       setActivities([]);
       try {
-        const res = await apiFetch(`/teacher/manage-lessons/chapters/${selectedChapter.id}/lessons`, { token });
+        const res = await apiFetch(
+          `/teacher/manage-lessons/chapters/${selectedChapter.id}/lessons`,
+          { token }
+        );
         setLessons(res?.lessons ?? []);
       } catch (e) {
         console.error("Lessons fetch failed:", e);
@@ -346,9 +484,12 @@ export default function LessonManagement() {
       setErrors({});
       setStatusMsg("");
       try {
-        const res = await apiFetch(`/teacher/manage-lessons/lessons/${selectedLesson.id}/activities?lang=${lang}`, {
-          token,
-        });
+        const res = await apiFetch(
+          `/teacher/manage-lessons/lessons/${selectedLesson.id}/activities?lang=${lang}`,
+          {
+            token,
+          }
+        );
         setActivities(res?.activities ?? []);
       } catch (e) {
         console.error("Activities fetch failed:", e);
@@ -358,6 +499,24 @@ export default function LessonManagement() {
       }
     })();
   }, [token, selectedLesson?.id, lang]);
+
+  // ✅ refresh helper (used after soft-delete)
+  async function refreshActivities() {
+    if (!token || !selectedLesson?.id) return;
+    setActivitiesLoading(true);
+    try {
+      const res = await apiFetch(
+        `/teacher/manage-lessons/lessons/${selectedLesson.id}/activities?lang=${lang}`,
+        { token }
+      );
+      setActivities(res?.activities ?? []);
+    } catch (e) {
+      console.error("Activities refresh failed:", e);
+      setActivities([]);
+    } finally {
+      setActivitiesLoading(false);
+    }
+  }
 
   // -------------------------
   // Helpers
@@ -402,16 +561,24 @@ export default function LessonManagement() {
   }
 
   function pickChoiceImage(c) {
-    return resolveMediaUrl(c?.image_path || c?.image || c?.image_resolved || c?.image_url || "");
+    return resolveMediaUrl(
+      c?.image_path || c?.image || c?.image_resolved || c?.image_url || ""
+    );
   }
   function pickChoiceAudio(c) {
-    return resolveMediaUrl(c?.audio_path || c?.audio || c?.audio_resolved || c?.audio_url || "");
+    return resolveMediaUrl(
+      c?.audio_path || c?.audio || c?.audio_resolved || c?.audio_url || ""
+    );
   }
   function pickPromptImage(p) {
-    return resolveMediaUrl(p?.prompt_image_path || p?.prompt_image || p?.prompt_image_url || "");
+    return resolveMediaUrl(
+      p?.prompt_image_path || p?.prompt_image || p?.prompt_image_url || ""
+    );
   }
   function pickPromptAudio(p) {
-    return resolveMediaUrl(p?.prompt_audio_path || p?.prompt_audio || p?.prompt_audio_url || "");
+    return resolveMediaUrl(
+      p?.prompt_audio_path || p?.prompt_audio || p?.prompt_audio_url || ""
+    );
   }
 
   function openEditor(a) {
@@ -441,7 +608,6 @@ export default function LessonManagement() {
       correct: p?.correct ?? "",
       expected_emotion: (p?.expected_emotion ?? a?.expected_emotion ?? "").toString(),
       expected_speech: (p?.expected_speech ?? a?.expected_speech ?? "").toString(),
-
       temp: {
         prompt_image: null,
         prompt_audio: null,
@@ -568,7 +734,11 @@ export default function LessonManagement() {
       correct: baseChoices?.[0]?.key || "",
       expected_emotion: kind === "emotion" ? (lang === "tl" ? "masaya" : "happy") : "",
       expected_speech: kind === "asr" ? (lang === "tl" ? "Sabihin ito" : "Say this") : "",
-      temp: { prompt_image: null, prompt_audio: null, choices: baseChoices.map(() => ({ image: null, audio: null })) },
+      temp: {
+        prompt_image: null,
+        prompt_audio: null,
+        choices: baseChoices.map(() => ({ image: null, audio: null })),
+      },
     });
 
     setAddOpen(false);
@@ -615,7 +785,10 @@ export default function LessonManagement() {
   }
 
   const computedErrors = useMemo(() => validateForm(form), [form]);
-  const isFormValid = useMemo(() => Object.keys(computedErrors).length === 0, [computedErrors]);
+  const isFormValid = useMemo(
+    () => Object.keys(computedErrors).length === 0,
+    [computedErrors]
+  );
 
   // -------------------------
   // Upload (TEMP-first)
@@ -624,26 +797,18 @@ export default function LessonManagement() {
     const fd = new FormData();
     fd.append("file", file);
 
-    const res = await fetch(`${API_BASE}/teacher/manage-lessons/uploads/temp?kind=${kind}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: fd,
-    });
+    const res = await fetch(
+      `${API_BASE}/teacher/manage-lessons/uploads/temp?kind=${kind}`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      }
+    );
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.error || "Upload failed");
     return data; // { url, path, temp_key }
-  }
-
-  function openFilePicker(accept, onPick) {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = accept;
-    input.onchange = (e) => {
-      const file = e.target.files?.[0];
-      if (file) onPick(file);
-    };
-    input.click();
   }
 
   async function uploadPromptMedia(kind) {
@@ -690,7 +855,9 @@ export default function LessonManagement() {
     openFilePicker(accept, async (file) => {
       try {
         setUploading(true);
-        setStatusMsg(kind === "image" ? "Uploading choice picture..." : "Uploading choice audio...");
+        setStatusMsg(
+          kind === "image" ? "Uploading choice picture..." : "Uploading choice audio..."
+        );
 
         const data = await tempUpload(kind, file);
 
@@ -709,10 +876,16 @@ export default function LessonManagement() {
           if (!nextTempChoices[idx]) nextTempChoices[idx] = { image: null, audio: null };
           nextTempChoices[idx] = {
             ...nextTempChoices[idx],
-            ...(kind === "image" ? { image: data.path || data.url } : { audio: data.path || data.url }),
+            ...(kind === "image"
+              ? { image: data.path || data.url }
+              : { audio: data.path || data.url }),
           };
 
-          return { ...p, choices: nextChoices, temp: { ...p.temp, choices: nextTempChoices } };
+          return {
+            ...p,
+            choices: nextChoices,
+            temp: { ...p.temp, choices: nextTempChoices },
+          };
         });
 
         setStatusMsg("");
@@ -728,9 +901,19 @@ export default function LessonManagement() {
 
   function removePromptMedia(kind) {
     if (kind === "image") {
-      setFormDirty((p) => ({ ...p, prompt_image: "", prompt_image_path: "", temp: { ...p.temp, prompt_image: null } }));
+      setFormDirty((p) => ({
+        ...p,
+        prompt_image: "",
+        prompt_image_path: "",
+        temp: { ...p.temp, prompt_image: null },
+      }));
     } else {
-      setFormDirty((p) => ({ ...p, prompt_audio: "", prompt_audio_path: "", temp: { ...p.temp, prompt_audio: null } }));
+      setFormDirty((p) => ({
+        ...p,
+        prompt_audio: "",
+        prompt_audio_path: "",
+        temp: { ...p.temp, prompt_audio: null },
+      }));
     }
   }
 
@@ -746,7 +929,10 @@ export default function LessonManagement() {
 
       const nextTempChoices = [...(p.temp?.choices || [])];
       if (!nextTempChoices[idx]) nextTempChoices[idx] = { image: null, audio: null };
-      nextTempChoices[idx] = { ...nextTempChoices[idx], ...(kind === "image" ? { image: null } : { audio: null }) };
+      nextTempChoices[idx] = {
+        ...nextTempChoices[idx],
+        ...(kind === "image" ? { image: null } : { audio: null }),
+      };
 
       return { ...p, choices: next, temp: { ...p.temp, choices: nextTempChoices } };
     });
@@ -757,7 +943,13 @@ export default function LessonManagement() {
       ...p,
       choices: [
         ...(p.choices || []),
-        { key: `choice_${(p.choices?.length || 0) + 1}`, image: "", image_path: "", audio: "", audio_path: "" },
+        {
+          key: `choice_${(p.choices?.length || 0) + 1}`,
+          image: "",
+          image_path: "",
+          audio: "",
+          audio_path: "",
+        },
       ],
       temp: { ...p.temp, choices: [...(p.temp?.choices || []), { image: null, audio: null }] },
     }));
@@ -795,7 +987,6 @@ export default function LessonManagement() {
     setStatusMsg(editing?.id ? "Saving changes..." : "Creating question...");
 
     try {
-      //  canonical: label mirrors key in DB; frontend can still send label:null
       const choicesForDb = (form.choices || [])
         .map((c, idx) => ({
           key: (c.key || `choice_${idx + 1}`).trim(),
@@ -826,26 +1017,37 @@ export default function LessonManagement() {
       let updatedOrCreated = null;
 
       if (!editing?.id) {
-        if (!selectedLesson?.id) throw new Error("Missing lesson context. Please re-open the lesson.");
+        if (!selectedLesson?.id)
+          throw new Error("Missing lesson context. Please re-open the lesson.");
 
-        const res = await apiFetch(`/teacher/manage-lessons/lessons/${selectedLesson.id}/activities`, {
-          token,
-          method: "POST",
-          body,
-        });
+        const res = await apiFetch(
+          `/teacher/manage-lessons/lessons/${selectedLesson.id}/activities`,
+          {
+            token,
+            method: "POST",
+            body,
+          }
+        );
         updatedOrCreated = res?.activity;
 
         if (updatedOrCreated) {
-          setActivities((prev) => [...prev, updatedOrCreated].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)));
+          setActivities((prev) =>
+            [...prev, updatedOrCreated].sort(
+              (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
+            )
+          );
           setEditing(updatedOrCreated);
           openEditor(updatedOrCreated);
         }
       } else {
-        const res = await apiFetch(`/teacher/manage-lessons/activities/${editing.id}`, {
-          token,
-          method: "PATCH",
-          body,
-        });
+        const res = await apiFetch(
+          `/teacher/manage-lessons/activities/${editing.id}`,
+          {
+            token,
+            method: "PATCH",
+            body,
+          }
+        );
         updatedOrCreated = res?.activity;
 
         if (updatedOrCreated) {
@@ -868,6 +1070,7 @@ export default function LessonManagement() {
     }
   }
 
+  // ✅ Soft-delete friendly: backend marks inactive + resequences sort_order.
   async function deleteActivity() {
     if (!editing) return;
 
@@ -880,8 +1083,14 @@ export default function LessonManagement() {
 
     try {
       setStatusMsg("Deleting...");
-      await apiFetch(`/teacher/manage-lessons/activities/${editing.id}`, { token, method: "DELETE" });
-      setActivities((prev) => prev.filter((x) => x.id !== editing.id));
+      await apiFetch(`/teacher/manage-lessons/activities/${editing.id}`, {
+        token,
+        method: "DELETE",
+      });
+
+      // ✅ refetch so list is correct and resequenced
+      await refreshActivities();
+
       setEditing(null);
       setDirty(false);
       setErrors({});
@@ -913,13 +1122,30 @@ export default function LessonManagement() {
   const choiceNeedsImage = isChoose || isSound || isImage || isSequence;
   const choiceNeedsAudio = isSound;
 
-  const chapterTitle = selectedChapter ? (lang === "tl" ? selectedChapter.title_tl : selectedChapter.title_en) : "";
-  const lessonTitle = selectedLesson ? (lang === "tl" ? selectedLesson.title_tl : selectedLesson.title_en) : "";
+  const chapterTitle = selectedChapter
+    ? lang === "tl"
+      ? selectedChapter.title_tl
+      : selectedChapter.title_en
+    : "";
+  const lessonTitle = selectedLesson
+    ? lang === "tl"
+      ? selectedLesson.title_tl
+      : selectedLesson.title_en
+    : "";
 
   // -------------------------
   // Dropzone UI component
   // -------------------------
-  function Dropzone({ icon, title, subtitle, hasFile, preview, onBrowse, onRemove, kind }) {
+  function Dropzone({
+    icon,
+    title,
+    subtitle,
+    hasFile,
+    preview,
+    onBrowse,
+    onRemove,
+    kind,
+  }) {
     return (
       <div className="rounded-3xl bg-white">
         <div className="flex items-center justify-between gap-2">
@@ -941,10 +1167,14 @@ export default function LessonManagement() {
           className="mt-2 w-full text-left rounded-2xl border border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100 transition p-4"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-white grid place-items-center border border-gray-200">{icon}</div>
+            <div className="w-10 h-10 rounded-2xl bg-white grid place-items-center border border-gray-200">
+              {icon}
+            </div>
 
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold text-gray-800">{hasFile ? "Replace file" : "Upload file"}</div>
+              <div className="text-sm font-semibold text-gray-800">
+                {hasFile ? "Replace file" : "Upload file"}
+              </div>
               <div className="text-xs text-gray-500 mt-0.5">{subtitle}</div>
             </div>
 
@@ -976,6 +1206,8 @@ export default function LessonManagement() {
     <>
       <style>{`
         .soft-ring:focus { outline: none; box-shadow: 0 0 0 4px rgba(46,75,255,.12); border-color: rgba(46,75,255,.35); }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
 
       <div className="min-h-[100dvh] bg-[#F6F7FB] flex flex-col lg:flex-row lg:pl-64">
@@ -990,7 +1222,9 @@ export default function LessonManagement() {
             <Link
               to="/teacher"
               className={`flex items-center gap-3 px-3 py-2 rounded-2xl mb-2 transition-all font-medium ${
-                location.pathname === "/teacher" ? "bg-white text-[#2E4bff] font-semibold" : "hover:bg-white/10"
+                location.pathname === "/teacher"
+                  ? "bg-white text-[#2E4bff] font-semibold"
+                  : "hover:bg-white/10"
               }`}
             >
               <GoHome className="text-xl" />
@@ -1051,7 +1285,12 @@ export default function LessonManagement() {
 
         {/* Mobile Drawer */}
         {!navOpen && (
-          <div className="lg:hidden fixed inset-y-0 left-0 w-15 z-40" onTouchStart={onEdgeTouchStart} onTouchMove={onEdgeTouchMove} onTouchEnd={onEdgeTouchEnd} />
+          <div
+            className="lg:hidden fixed inset-y-0 left-0 w-15 z-40"
+            onTouchStart={onEdgeTouchStart}
+            onTouchMove={onEdgeTouchMove}
+            onTouchEnd={onEdgeTouchEnd}
+          />
         )}
         <div
           className={`lg:hidden ${drawerClasses}`}
@@ -1065,16 +1304,32 @@ export default function LessonManagement() {
             <div className="text-2xl font-bold">HearMyHeart</div>
           </div>
 
-          <Link to="/teacher" onClick={() => setNavOpen(false)} className="flex items-center gap-3 px-3 py-2 rounded-2xl mb-2 hover:bg-white/10">
+          <Link
+            to="/teacher"
+            onClick={() => setNavOpen(false)}
+            className="flex items-center gap-3 px-3 py-2 rounded-2xl mb-2 hover:bg-white/10"
+          >
             <GoHome className="text-xl" /> <span>Dashboard</span>
           </Link>
-          <Link to="/teacher/students" onClick={() => setNavOpen(false)} className="flex items-center gap-3 px-3 py-2 rounded-2xl mb-2 hover:bg-white/10">
+          <Link
+            to="/teacher/students"
+            onClick={() => setNavOpen(false)}
+            className="flex items-center gap-3 px-3 py-2 rounded-2xl mb-2 hover:bg-white/10"
+          >
             <PiStudentBold className="text-xl" /> <span>Students</span>
           </Link>
-          <Link to="/teacher/analytics" onClick={() => setNavOpen(false)} className="flex items-center gap-3 px-3 py-2 rounded-2xl mb-2 hover:bg-white/10">
+          <Link
+            to="/teacher/analytics"
+            onClick={() => setNavOpen(false)}
+            className="flex items-center gap-3 px-3 py-2 rounded-2xl mb-2 hover:bg-white/10"
+          >
             <SiGoogleanalytics className="text-xl" /> <span>Analytics</span>
           </Link>
-          <Link to="/teacher/lesson-management" onClick={() => setNavOpen(false)} className="flex items-center gap-3 px-3 py-2 rounded-2xl mb-2 hover:bg-white/10">
+          <Link
+            to="/teacher/lesson-management"
+            onClick={() => setNavOpen(false)}
+            className="flex items-center gap-3 px-3 py-2 rounded-2xl mb-2 hover:bg-white/10"
+          >
             <MdMenuBook className="text-xl" /> <span>Manage</span>
           </Link>
 
@@ -1093,14 +1348,24 @@ export default function LessonManagement() {
           </div>
         </div>
 
-        {navOpen && <div className="lg:hidden fixed inset-0 bg-black/40 z-40" onClick={() => setNavOpen(false)} />}
+        {navOpen && (
+          <div
+            className="lg:hidden fixed inset-0 bg-black/40 z-40"
+            onClick={() => setNavOpen(false)}
+          />
+        )}
 
         {/* Main */}
         <main className="flex-1 p-4 md:p-8">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="flex flex-col gap-2">
               {step !== "chapters" && (
-                <button className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition w-fit" onClick={goBackOneStep} aria-label="Go back" title="Back">
+                <button
+                  className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition w-fit"
+                  onClick={goBackOneStep}
+                  aria-label="Go back"
+                  title="Back"
+                >
                   <FiArrowLeft className="text-base" />
                   <span>Back</span>
                 </button>
@@ -1129,12 +1394,16 @@ export default function LessonManagement() {
                   <span className="font-semibold text-gray-800">Activities</span>
                 </div>
               )}
+
+             
             </div>
 
             <div className="flex gap-2">
               <button
                 className={`px-4 py-2 rounded-2xl border transition ${
-                  lang === "en" ? "bg-[#2E4bff] text-white border-[#2E4bff]" : "bg-white border-gray-200 hover:bg-gray-50"
+                  lang === "en"
+                    ? "bg-[#2E4bff] text-white border-[#2E4bff]"
+                    : "bg-white border-gray-200 hover:bg-gray-50"
                 }`}
                 onClick={() => setLang("en")}
               >
@@ -1142,7 +1411,9 @@ export default function LessonManagement() {
               </button>
               <button
                 className={`px-4 py-2 rounded-2xl border transition ${
-                  lang === "tl" ? "bg-[#2E4bff] text-white border-[#2E4bff]" : "bg-white border-gray-200 hover:bg-gray-50"
+                  lang === "tl"
+                    ? "bg-[#2E4bff] text-white border-[#2E4bff]"
+                    : "bg-white border-gray-200 hover:bg-gray-50"
                 }`}
                 onClick={() => setLang("tl")}
               >
@@ -1161,51 +1432,95 @@ export default function LessonManagement() {
               ) : chapters.length === 0 ? (
                 <div className="text-gray-500">No chapters found.</div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {chapters.map((ch) => {
-                    const title = lang === "tl" ? ch.title_tl : ch.title_en;
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={async ({ active, over }) => {
+                    if (!over || active.id === over.id) return;
 
-                    return (
-                      <div key={ch.id} className="relative group">
-                        {/* card click */}
-                        <button
-                          className="w-full text-left bg-white rounded-3xl shadow-sm border border-gray-200 hover:shadow-md transition overflow-hidden"
-                          onClick={() => {
-                            setSelectedChapter(ch);
-                            setStep("lessons");
-                          }}
-                        >
-                          <div className="h-44 w-full bg-gray-50">
-                            {ch.bg_path_resolved ? (
-                              <img src={ch.bg_path_resolved} alt={title} className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full grid place-items-center text-gray-400 text-sm">No image</div>
-                            )}
-                          </div>
+                    const oldIndex = chapters.findIndex((c) => c.id === active.id);
+                    const newIndex = chapters.findIndex((c) => c.id === over.id);
+                    if (oldIndex < 0 || newIndex < 0) return;
 
-                          <div className="p-4">
-                            <div className="text-xs font-semibold tracking-wide text-gray-500">{chapterLabel(ch).toUpperCase()}</div>
-                            <div className="mt-1 font-bold text-gray-900 text-lg">{title}</div>
-                          </div>
-                        </button>
+                    const prev = chapters;
+                    const next = arrayMove(chapters, oldIndex, newIndex).map((c, i) => ({
+                      ...c,
+                      sort_order: i + 1,
+                    }));
+                    setChapters(next);
 
-                        {/* hover pencil */}
-                        <button
-                          type="button"
-                          className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition rounded-2xl bg-white/95 border border-gray-200 shadow-sm p-2 hover:bg-gray-50"
-                          title="Edit chapter"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            openMetaEditor("chapter", ch);
-                          }}
-                        >
-                          <FiEdit2 />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                    try {
+                      await saveReorder(
+                        "/teacher/manage-lessons/chapters/reorder",
+                        next.map((c) => c.id)
+                      );
+                    } catch (e) {
+                      console.error(e);
+                      setChapters(prev);
+                      alert(e?.message || "Failed to save chapter order");
+                    }
+                  }}
+                >
+                  <SortableContext
+                    items={chapters.map((c) => c.id)}
+                    strategy={rectSortingStrategy}
+                  >
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {chapters.map((ch) => {
+                        const title = lang === "tl" ? ch.title_tl : ch.title_en;
+
+                        return (
+                          <SortableCard key={ch.id} id={ch.id}>
+                            <button
+                              className="w-full text-left bg-white rounded-3xl shadow-sm border border-gray-200 hover:shadow-md transition overflow-hidden"
+                              onClick={() => {
+                                setSelectedChapter(ch);
+                                setStep("lessons");
+                              }}
+                            >
+                              <div className="h-44 w-full bg-gray-50">
+                                {ch.bg_path_resolved ? (
+                                  <img
+                                    src={ch.bg_path_resolved}
+                                    alt={title}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full grid place-items-center text-gray-400 text-sm">
+                                    No image
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="p-4">
+                                <div className="text-xs font-semibold tracking-wide text-gray-500">
+                                  {chapterLabel(ch).toUpperCase()}
+                                </div>
+                                <div className="mt-1 font-bold text-gray-900 text-lg">
+                                  {title}
+                                </div>
+                              </div>
+                            </button>
+
+                            {/* hover pencil */}
+                            <button
+                              type="button"
+                              className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition rounded-2xl bg-white/95 border border-gray-200 shadow-sm p-2 hover:bg-gray-50"
+                              title="Edit chapter"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openMetaEditor("chapter", ch);
+                              }}
+                            >
+                              <FiEdit2 />
+                            </button>
+                          </SortableCard>
+                        );
+                      })}
+                    </div>
+                  </SortableContext>
+                </DndContext>
               )}
             </div>
           )}
@@ -1218,56 +1533,97 @@ export default function LessonManagement() {
               ) : lessons.length === 0 ? (
                 <div className="text-gray-500">No lessons found for this chapter.</div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {lessons.map((l) => {
-                    const title = lang === "tl" ? l.title_tl : l.title_en;
-                    const desc = lang === "tl" ? l.description_tl : l.description_en;
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={async ({ active, over }) => {
+                    if (!over || active.id === over.id) return;
 
-                    return (
-                      <div key={l.id} className="relative group">
-                        <button
-                          className="w-full text-left bg-white rounded-3xl shadow-sm border border-gray-200 hover:shadow-md transition overflow-hidden"
-                          onClick={() => {
-                            setSelectedLesson(l);
-                            setStep("activities");
-                          }}
-                        >
-                          <div className="h-44 w-full bg-gray-50">
-                            {l.cover_path_resolved ? (
-                              <img src={l.cover_path_resolved} alt={title} className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full grid place-items-center text-gray-400 text-sm">No image</div>
-                            )}
-                          </div>
+                    const oldIndex = lessons.findIndex((l) => l.id === active.id);
+                    const newIndex = lessons.findIndex((l) => l.id === over.id);
+                    if (oldIndex < 0 || newIndex < 0) return;
 
-                          <div className="p-4">
-                            <div className="font-bold text-gray-900 text-lg">{title}</div>
-                            {desc ? (
-                              <div className="text-sm text-gray-600 mt-1 line-clamp-2">{desc}</div>
-                            ) : (
-                              <div className="text-sm text-gray-400 mt-1">No description</div>
-                            )}
-                            <div className="text-xs text-gray-500 mt-2">{l.code}</div>
-                          </div>
-                        </button>
+                    const prev = lessons;
+                    const next = arrayMove(lessons, oldIndex, newIndex).map((l, i) => ({
+                      ...l,
+                      sort_order: i + 1,
+                    }));
+                    setLessons(next);
 
-                        {/* hover pencil */}
-                        <button
-                          type="button"
-                          className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition rounded-2xl bg-white/95 border border-gray-200 shadow-sm p-2 hover:bg-gray-50"
-                          title="Edit lesson"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            openMetaEditor("lesson", l);
-                          }}
-                        >
-                          <FiEdit2 />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                    try {
+                      await saveReorder(
+                        `/teacher/manage-lessons/chapters/${selectedChapter.id}/lessons/reorder`,
+                        next.map((l) => l.id)
+                      );
+                    } catch (e) {
+                      console.error(e);
+                      setLessons(prev);
+                      alert(e?.message || "Failed to save lesson order");
+                    }
+                  }}
+                >
+                  <SortableContext items={lessons.map((l) => l.id)} strategy={rectSortingStrategy}>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {lessons.map((l) => {
+                        const title = lang === "tl" ? l.title_tl : l.title_en;
+                        const desc = lang === "tl" ? l.description_tl : l.description_en;
+
+                        return (
+                          <SortableCard key={l.id} id={l.id}>
+                            <button
+                              className="w-full text-left bg-white rounded-3xl shadow-sm border border-gray-200 hover:shadow-md transition overflow-hidden"
+                              onClick={() => {
+                                setSelectedLesson(l);
+                                setStep("activities");
+                              }}
+                            >
+                              <div className="h-44 w-full bg-gray-50">
+                                {l.cover_path_resolved ? (
+                                  <img
+                                    src={l.cover_path_resolved}
+                                    alt={title}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full grid place-items-center text-gray-400 text-sm">
+                                    No image
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="p-4">
+                                <div className="font-bold text-gray-900 text-lg">{title}</div>
+                                {desc ? (
+                                  <div className="text-sm text-gray-600 mt-1 line-clamp-2">
+                                    {desc}
+                                  </div>
+                                ) : (
+                                  <div className="text-sm text-gray-400 mt-1">
+                                    No description
+                                  </div>
+                                )}
+                                <div className="text-xs text-gray-500 mt-2">{l.code}</div>
+                              </div>
+                            </button>
+
+                            <button
+                              type="button"
+                              className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition rounded-2xl bg-white/95 border border-gray-200 shadow-sm p-2 hover:bg-gray-50"
+                              title="Edit lesson"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openMetaEditor("lesson", l);
+                              }}
+                            >
+                              <FiEdit2 />
+                            </button>
+                          </SortableCard>
+                        );
+                      })}
+                    </div>
+                  </SortableContext>
+                </DndContext>
               )}
             </div>
           )}
@@ -1293,32 +1649,75 @@ export default function LessonManagement() {
                 ) : activities.length === 0 ? (
                   <div className="p-4 text-gray-500">No activities found.</div>
                 ) : (
-                  <div className="divide-y divide-gray-100">
-                    {activities.map((a) => {
-                      const typeLabel = activityDisplayName(a);
-                      const prompt = a.prompt || "Untitled question";
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={async ({ active, over }) => {
+                      if (!over || active.id === over.id) return;
 
-                      return (
-                        <div key={a.id} className="p-4 flex items-start justify-between gap-4">
-                          <div className="min-w-0">
-                            <div className="font-semibold text-gray-900 break-words">
-                              {a.sort_order}. {prompt}
-                            </div>
+                      const oldIndex = activities.findIndex((a) => a.id === active.id);
+                      const newIndex = activities.findIndex((a) => a.id === over.id);
+                      if (oldIndex < 0 || newIndex < 0) return;
 
-                            <div className="mt-2 flex flex-wrap items-center gap-2">
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-800 border border-gray-200">
-                                {typeLabel}
-                              </span>
-                            </div>
-                          </div>
+                      const prev = activities;
+                      const next = arrayMove(activities, oldIndex, newIndex).map((a, i) => ({
+                        ...a,
+                        sort_order: i + 1,
+                      }));
+                      setActivities(next);
 
-                          <button className="shrink-0 px-4 py-2 rounded-2xl bg-[#2E4bff] text-white hover:brightness-110 transition" onClick={() => openEditor(a)}>
-                            Edit
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                      try {
+                        await saveReorder(
+                          `/teacher/manage-lessons/lessons/${selectedLesson.id}/activities/reorder`,
+                          next.map((a) => a.id)
+                        );
+                        // optional: refresh to match backend normalization
+                        // await refreshActivities();
+                      } catch (e) {
+                        console.error(e);
+                        setActivities(prev);
+                        alert(e?.message || "Failed to save activity order");
+                      }
+                    }}
+                  >
+                    <SortableContext
+                      items={activities.map((a) => a.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="divide-y divide-gray-100">
+                        {activities.map((a, idx) => {
+                          const typeLabel = activityDisplayName(a);
+                          const prompt = a.prompt || "Untitled question";
+
+                          return (
+                            <SortableRow key={a.id} id={a.id}>
+                              <div className="p-4 flex items-start justify-between gap-4">
+                                <div className="min-w-0">
+                                  {/* ✅ always a clean 1..N list */}
+                                  <div className="font-semibold text-gray-900 break-words">
+                                    {idx + 1}. {prompt}
+                                  </div>
+
+                                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-800 border border-gray-200">
+                                      {typeLabel}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <button
+                                  className="shrink-0 px-4 py-2 rounded-2xl bg-[#2E4bff] text-white hover:brightness-110 transition"
+                                  onClick={() => openEditor(a)}
+                                >
+                                  Edit
+                                </button>
+                              </div>
+                            </SortableRow>
+                          );
+                        })}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
                 )}
               </div>
             </div>
@@ -1379,155 +1778,145 @@ export default function LessonManagement() {
         }}
       />
 
-    {/* ✅ CHAPTER/LESSON EDIT MODAL (wide desktop, header "Edit", click-to-upload photo overlay, scroll inside) */}
-{metaEditOpen && (
-  <div
-    className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4"
-    onMouseDown={(e) => {
-      // click outside closes
-      if (e.target === e.currentTarget) closeMetaEditor();
-    }}
-  >
-    {/* ✅ Make the modal a flex column with max height */}
-    <div className="w-[min(980px,96vw)] bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden flex flex-col max-h-[90vh]">
-      {/* ✅ Header: "Edit" + X */}
-      <div className="px-4 md:px-5 py-4 border-b border-gray-200 flex items-center justify-between shrink-0">
-        <div className="text-base font-semibold text-gray-900">Edit</div>
-
-        <button
-          className="w-10 h-10 rounded-2xl border border-gray-200 hover:bg-gray-50 grid place-items-center"
-          onClick={closeMetaEditor}
-          aria-label="Close"
-          title="Close"
-          type="button"
+      {/* ✅ CHAPTER/LESSON EDIT MODAL */}
+      {metaEditOpen && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeMetaEditor();
+          }}
         >
-          <FiX className="text-lg" />
-        </button>
-      </div>
+          <div className="w-[min(980px,96vw)] bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-4 md:px-5 py-4 border-b border-gray-200 flex items-center justify-between shrink-0">
+              <div className="text-base font-semibold text-gray-900">Edit</div>
 
-      {metaErr && (
-        <div className="px-4 md:px-5 py-3 border-b border-gray-200 shrink-0">
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-            {metaErr}
-          </div>
-        </div>
-      )}
+              <button
+                className="w-10 h-10 rounded-2xl border border-gray-200 hover:bg-gray-50 grid place-items-center"
+                onClick={closeMetaEditor}
+                aria-label="Close"
+                title="Close"
+                type="button"
+              >
+                <FiX className="text-lg" />
+              </button>
+            </div>
 
-      {/* ✅ Scrollable body (no scrollbar) */}
-      <div className="p-4 md:p-5 space-y-5 overflow-y-auto hide-scrollbar">
-        {/* Photo (click-to-upload, hover overlay) */}
-        <div>
-          <div className="text-xs text-gray-500 mb-2">Photo</div>
+            {metaErr && (
+              <div className="px-4 md:px-5 py-3 border-b border-gray-200 shrink-0">
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                  {metaErr}
+                </div>
+              </div>
+            )}
 
-          <button
-            type="button"
-            onClick={() => openFilePicker("image/*", pickMetaFile)}
-            className="group relative w-full rounded-3xl border border-gray-200 overflow-hidden bg-gray-50 focus:outline-none"
-            aria-label="Upload photo"
-            title="Upload photo"
-          >
-            <div className="h-40 md:h-48 w-full">
-              {metaForm.filePreview ? (
-                <img
-                  src={metaForm.filePreview}
-                  alt="preview"
-                  className="w-full h-full object-cover transition duration-200 group-hover:scale-[1.02]"
-                />
-              ) : (
-                <div className="h-full grid place-items-center text-gray-400 text-sm">
-                  Click to upload image
+            <div className="p-4 md:p-5 space-y-5 overflow-y-auto hide-scrollbar">
+              <div>
+                <div className="text-xs text-gray-500 mb-2">Photo</div>
+
+                <button
+                  type="button"
+                  onClick={() => openFilePicker("image/*", pickMetaFile)}
+                  className="group relative w-full rounded-3xl border border-gray-200 overflow-hidden bg-gray-50 focus:outline-none"
+                  aria-label="Upload photo"
+                  title="Upload photo"
+                >
+                  <div className="h-40 md:h-48 w-full">
+                    {metaForm.filePreview ? (
+                      <img
+                        src={metaForm.filePreview}
+                        alt="preview"
+                        className="w-full h-full object-cover transition duration-200 group-hover:scale-[1.02]"
+                      />
+                    ) : (
+                      <div className="h-full grid place-items-center text-gray-400 text-sm">
+                        Click to upload image
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pointer-events-none absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                    <div className="flex flex-col items-center gap-2 text-white">
+                      <FiUploadCloud className="text-3xl" />
+                      <span className="text-sm font-medium">
+                        {metaForm.filePreview ? "Change photo" : "Upload photo"}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+
+                <div className="mt-2 text-xs text-gray-500">
+                  Click the image to {metaForm.filePreview ? "change" : "upload"} a photo.
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs text-gray-500">Title (English)</label>
+                  <input
+                    className="w-full mt-1 px-3 py-2 rounded-2xl border border-gray-200 soft-ring"
+                    value={metaForm.title_en}
+                    onChange={(e) => setMetaForm((p) => ({ ...p, title_en: e.target.value }))}
+                    placeholder="English title"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-500">Title (Tagalog)</label>
+                  <input
+                    className="w-full mt-1 px-3 py-2 rounded-2xl border border-gray-200 soft-ring"
+                    value={metaForm.title_tl}
+                    onChange={(e) => setMetaForm((p) => ({ ...p, title_tl: e.target.value }))}
+                    placeholder="Tagalog title"
+                  />
+                </div>
+              </div>
+
+              {metaEditKind === "lesson" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-gray-500">Description (English)</label>
+                    <textarea
+                      className="w-full mt-1 px-3 py-2 rounded-2xl border border-gray-200 soft-ring min-h-[140px] resize-none"
+                      value={metaForm.description_en}
+                      onChange={(e) => setMetaForm((p) => ({ ...p, description_en: e.target.value }))}
+                      placeholder="English description"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-500">Description (Tagalog)</label>
+                    <textarea
+                      className="w-full mt-1 px-3 py-2 rounded-2xl border border-gray-200 soft-ring min-h-[140px] resize-none"
+                      value={metaForm.description_tl}
+                      onChange={(e) => setMetaForm((p) => ({ ...p, description_tl: e.target.value }))}
+                      placeholder="Tagalog description"
+                    />
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Hover overlay */}
-            <div className="pointer-events-none absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-              <div className="flex flex-col items-center gap-2 text-white">
-                <FiUploadCloud className="text-3xl" />
-                <span className="text-sm font-medium">
-                  {metaForm.filePreview ? "Change photo" : "Upload photo"}
-                </span>
-              </div>
-            </div>
-          </button>
+            <div className="p-4 md:p-5 border-t border-gray-200 flex items-center justify-end gap-2 shrink-0 bg-white">
+              <button
+                className="px-4 py-2 rounded-2xl bg-gray-100 hover:bg-gray-200"
+                onClick={closeMetaEditor}
+                type="button"
+              >
+                Cancel
+              </button>
 
-          <div className="mt-2 text-xs text-gray-500">
-            Click the image to {metaForm.filePreview ? "change" : "upload"} a photo.
+              <button
+                className="px-5 py-2 rounded-2xl bg-[#2E4bff] text-white hover:brightness-110 disabled:opacity-60"
+                onClick={saveMeta}
+                disabled={metaSaving}
+                type="button"
+              >
+                {metaSaving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
           </div>
         </div>
-
-        {/* Titles */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="text-xs text-gray-500">Title (English)</label>
-            <input
-              className="w-full mt-1 px-3 py-2 rounded-2xl border border-gray-200 soft-ring"
-              value={metaForm.title_en}
-              onChange={(e) => setMetaForm((p) => ({ ...p, title_en: e.target.value }))}
-              placeholder="English title"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs text-gray-500">Title (Tagalog)</label>
-            <input
-              className="w-full mt-1 px-3 py-2 rounded-2xl border border-gray-200 soft-ring"
-              value={metaForm.title_tl}
-              onChange={(e) => setMetaForm((p) => ({ ...p, title_tl: e.target.value }))}
-              placeholder="Tagalog title"
-            />
-          </div>
-        </div>
-
-        {/* Descriptions (LESSON only) */}
-        {metaEditKind === "lesson" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs text-gray-500">Description (English)</label>
-              <textarea
-                className="w-full mt-1 px-3 py-2 rounded-2xl border border-gray-200 soft-ring min-h-[140px] resize-none"
-                value={metaForm.description_en}
-                onChange={(e) => setMetaForm((p) => ({ ...p, description_en: e.target.value }))}
-                placeholder="English description"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs text-gray-500">Description (Tagalog)</label>
-              <textarea
-                className="w-full mt-1 px-3 py-2 rounded-2xl border border-gray-200 soft-ring min-h-[140px] resize-none"
-                value={metaForm.description_tl}
-                onChange={(e) => setMetaForm((p) => ({ ...p, description_tl: e.target.value }))}
-                placeholder="Tagalog description"
-              />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ✅ Footer pinned */}
-      <div className="p-4 md:p-5 border-t border-gray-200 flex items-center justify-end gap-2 shrink-0 bg-white">
-        <button
-          className="px-4 py-2 rounded-2xl bg-gray-100 hover:bg-gray-200"
-          onClick={closeMetaEditor}
-          type="button"
-        >
-          Cancel
-        </button>
-
-        <button
-          className="px-5 py-2 rounded-2xl bg-[#2E4bff] text-white hover:brightness-110 disabled:opacity-60"
-          onClick={saveMeta}
-          disabled={metaSaving}
-          type="button"
-        >
-          {metaSaving ? "Saving..." : "Save Changes"}
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
+      )}
 
       {/* ADD QUESTION MODAL (Dropdown) */}
       {addOpen && (
@@ -1538,7 +1927,10 @@ export default function LessonManagement() {
                 <div className="text-lg font-bold text-gray-900">Add Question</div>
                 <div className="text-sm text-gray-500">Choose an activity type to start.</div>
               </div>
-              <button className="px-3 py-2 rounded-2xl border border-gray-200 hover:bg-gray-50" onClick={() => setAddOpen(false)}>
+              <button
+                className="px-3 py-2 rounded-2xl border border-gray-200 hover:bg-gray-50"
+                onClick={() => setAddOpen(false)}
+              >
                 Close
               </button>
             </div>
@@ -1562,10 +1954,16 @@ export default function LessonManagement() {
             </div>
 
             <div className="p-4 md:p-5 border-t border-gray-200 flex items-center justify-end gap-2">
-              <button className="px-4 py-2 rounded-2xl bg-gray-100 hover:bg-gray-200" onClick={() => setAddOpen(false)}>
+              <button
+                className="px-4 py-2 rounded-2xl bg-gray-100 hover:bg-gray-200"
+                onClick={() => setAddOpen(false)}
+              >
                 Cancel
               </button>
-              <button className="px-5 py-2 rounded-2xl bg-[#2E4bff] text-white hover:brightness-110" onClick={() => startDraftFromKind(addKind)}>
+              <button
+                className="px-5 py-2 rounded-2xl bg-[#2E4bff] text-white hover:brightness-110"
+                onClick={() => startDraftFromKind(addKind)}
+              >
                 Next
               </button>
             </div>
@@ -1577,20 +1975,25 @@ export default function LessonManagement() {
       {editing && (
         <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
           <div className="w-full max-w-6xl bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden flex flex-col max-h-[90vh]">
-            {/* Header */}
             <div className="p-4 md:p-5 border-b border-gray-200 flex items-start justify-between gap-3">
               <div>
-                <div className="text-lg font-bold text-gray-900">{editing?.id ? "Edit Activity" : "New Question"}</div>
+                <div className="text-lg font-bold text-gray-900">
+                  {editing?.id ? "Edit Activity" : "New Question"}
+                </div>
                 <div className="text-sm text-gray-500">
-                  {activityDisplayName(editing)} • {editing?.id ? `#${editing.sort_order}` : "Not saved yet"} • Lang: {lang.toUpperCase()}
+                  {activityDisplayName(editing)} •{" "}
+                  {editing?.id ? `#${editing.sort_order}` : "Not saved yet"} • Lang:{" "}
+                  {lang.toUpperCase()}
                 </div>
               </div>
-              <button className="px-3 py-2 rounded-2xl border border-gray-200 hover:bg-gray-50" onClick={closeEditor}>
+              <button
+                className="px-3 py-2 rounded-2xl border border-gray-200 hover:bg-gray-50"
+                onClick={closeEditor}
+              >
                 Close
               </button>
             </div>
 
-            {/* Status / errors */}
             {(statusMsg || Object.keys(errors).length > 0) && (
               <div className="px-4 md:px-5 py-3 border-b border-gray-200">
                 {Object.keys(errors).length > 0 ? (
@@ -1603,15 +2006,15 @@ export default function LessonManagement() {
                     </ul>
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">{statusMsg}</div>
+                  <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                    {statusMsg}
+                  </div>
                 )}
               </div>
             )}
 
-            {/* Body */}
             <div className="p-4 md:p-5 overflow-auto flex-1 hide-scrollbar">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                {/* LEFT */}
                 <div className="space-y-5">
                   <div>
                     <label className="text-xs text-gray-500">
@@ -1627,7 +2030,9 @@ export default function LessonManagement() {
                       placeholder={defaultPromptForKind(lay)}
                     />
 
-                    {computedErrors.prompt && <div className="text-xs text-red-600 mt-1">{computedErrors.prompt}</div>}
+                    {computedErrors.prompt && (
+                      <div className="text-xs text-red-600 mt-1">{computedErrors.prompt}</div>
+                    )}
                   </div>
 
                   {isEmotion && (
@@ -1637,13 +2042,17 @@ export default function LessonManagement() {
                       </label>
                       <input
                         className={`w-full mt-1 px-3 py-2 rounded-2xl border soft-ring ${
-                          computedErrors.expected_emotion ? "border-red-300 bg-red-50" : "border-gray-200"
+                          computedErrors.expected_emotion
+                            ? "border-red-300 bg-red-50"
+                            : "border-gray-200"
                         }`}
                         value={form.expected_emotion || ""}
                         onChange={(e) => setFormDirty((p) => ({ ...p, expected_emotion: e.target.value }))}
                         placeholder={lang === "tl" ? "hal: masaya" : "e.g., happy"}
                       />
-                      {computedErrors.expected_emotion && <div className="text-xs text-red-600 mt-1">{computedErrors.expected_emotion}</div>}
+                      {computedErrors.expected_emotion && (
+                        <div className="text-xs text-red-600 mt-1">{computedErrors.expected_emotion}</div>
+                      )}
                     </div>
                   )}
 
@@ -1654,13 +2063,17 @@ export default function LessonManagement() {
                       </label>
                       <input
                         className={`w-full mt-1 px-3 py-2 rounded-2xl border soft-ring ${
-                          computedErrors.expected_speech ? "border-red-300 bg-red-50" : "border-gray-200"
+                          computedErrors.expected_speech
+                            ? "border-red-300 bg-red-50"
+                            : "border-gray-200"
                         }`}
                         value={form.expected_speech || ""}
                         onChange={(e) => setFormDirty((p) => ({ ...p, expected_speech: e.target.value }))}
                         placeholder={lang === "tl" ? "hal: baka" : "e.g., cow"}
                       />
-                      {computedErrors.expected_speech && <div className="text-xs text-red-600 mt-1">{computedErrors.expected_speech}</div>}
+                      {computedErrors.expected_speech && (
+                        <div className="text-xs text-red-600 mt-1">{computedErrors.expected_speech}</div>
+                      )}
                     </div>
                   )}
 
@@ -1683,12 +2096,13 @@ export default function LessonManagement() {
                           </option>
                         ))}
                       </select>
-                      {computedErrors.correct && <div className="text-xs text-red-600 mt-1">{computedErrors.correct}</div>}
+                      {computedErrors.correct && (
+                        <div className="text-xs text-red-600 mt-1">{computedErrors.correct}</div>
+                      )}
                     </div>
                   )}
                 </div>
 
-                {/* RIGHT: Prompt Media dropzones */}
                 <div className="space-y-5">
                   {(showPromptImage || showPromptAudio) && (
                     <div className="rounded-3xl border border-gray-200 p-4 bg-white">
@@ -1726,7 +2140,6 @@ export default function LessonManagement() {
                 </div>
               </div>
 
-              {/* Choices */}
               {showChoices && (
                 <div className="mt-5 rounded-3xl border border-gray-200 p-4 bg-white">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -1741,10 +2154,16 @@ export default function LessonManagement() {
                           ? "ObjectRecognition: picture choices."
                           : "SequenceAwareness: steps (optional pictures)."}
                       </div>
-                      {computedErrors.choices && <div className="text-xs text-red-600 mt-1">{computedErrors.choices}</div>}
+                      {computedErrors.choices && (
+                        <div className="text-xs text-red-600 mt-1">{computedErrors.choices}</div>
+                      )}
                     </div>
 
-                    <button className="px-4 py-2 rounded-2xl bg-gray-100 hover:bg-gray-200 text-sm" onClick={addChoiceRow} type="button">
+                    <button
+                      className="px-4 py-2 rounded-2xl bg-gray-100 hover:bg-gray-200 text-sm"
+                      onClick={addChoiceRow}
+                      type="button"
+                    >
                       + Add Choice
                     </button>
                   </div>
@@ -1759,7 +2178,9 @@ export default function LessonManagement() {
                             </label>
                             <input
                               className={`w-full mt-1 px-3 py-2 rounded-2xl border soft-ring ${
-                                computedErrors[`choice_${idx}_key`] ? "border-red-300 bg-red-50" : "border-gray-200"
+                                computedErrors[`choice_${idx}_key`]
+                                  ? "border-red-300 bg-red-50"
+                                  : "border-gray-200"
                               }`}
                               value={c.key}
                               onChange={(e) =>
@@ -1770,7 +2191,11 @@ export default function LessonManagement() {
                                 })
                               }
                             />
-                            {computedErrors[`choice_${idx}_key`] && <div className="text-xs text-red-600 mt-1">{computedErrors[`choice_${idx}_key`]}</div>}
+                            {computedErrors[`choice_${idx}_key`] && (
+                              <div className="text-xs text-red-600 mt-1">
+                                {computedErrors[`choice_${idx}_key`]}
+                              </div>
+                            )}
                           </div>
 
                           <button
@@ -1783,7 +2208,6 @@ export default function LessonManagement() {
                           </button>
                         </div>
 
-                        {/* Media dropzones */}
                         <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
                           {choiceNeedsImage && (
                             <Dropzone
@@ -1818,9 +2242,12 @@ export default function LessonManagement() {
               )}
             </div>
 
-            {/* Footer actions */}
             <div className="p-4 md:p-5 border-t border-gray-200 bg-white flex items-center justify-between gap-3 flex-wrap">
-              <button className="px-4 py-2 rounded-2xl bg-gray-100 hover:bg-gray-200" onClick={closeEditor} type="button">
+              <button
+                className="px-4 py-2 rounded-2xl bg-gray-100 hover:bg-gray-200"
+                onClick={closeEditor}
+                type="button"
+              >
                 Cancel
               </button>
 

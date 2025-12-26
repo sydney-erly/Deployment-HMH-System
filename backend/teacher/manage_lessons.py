@@ -1,4 +1,3 @@
-# manage_lessons.py
 from flask import Blueprint, request, jsonify, make_response
 from auth.jwt_utils import require_teacher
 from extensions import supabase_client
@@ -6,6 +5,7 @@ from content.transform import pick_branch, public_url
 import time
 import re
 import secrets
+from datetime import datetime, timezone
 
 manage_lessons_bp = Blueprint("manage_lessons", __name__)
 
@@ -15,9 +15,6 @@ ALLOWED_BUCKETS = {"hmh-images", "hmh-audio"}
 
 # -------------------------
 # "No-API" Translation (EN -> TL)
-# - Not accurate by design
-# - Never calls external services
-# - Always returns something (fallback to English)
 # -------------------------
 
 EMOTION_MAP = {
@@ -40,13 +37,6 @@ PHRASE_MAP = {
 }
 
 def translate_en_to_tl(text: str) -> str:
-    """
-    Cheap translation:
-    - phrase map
-    - simple pattern map (Choice 1, Sound 2, Step 3)
-    - emotion map
-    - fallback: return original English so TL is never blank
-    """
     if not text:
         return ""
     s = str(text).strip()
@@ -54,22 +44,18 @@ def translate_en_to_tl(text: str) -> str:
         return ""
     key = s.lower().strip()
 
-    # exact phrase translations
     if key in PHRASE_MAP:
         return PHRASE_MAP[key]
 
-    # emotions (single words)
     if key in EMOTION_MAP:
         return EMOTION_MAP[key]
 
-    # patterns like "Choice 1" / "Sound 2" / "Step 3"
     m = re.match(r"^(choice|sound|step)\s*(\d+)$", key)
     if m:
         w, n = m.group(1), m.group(2)
         base = {"choice": "Pagpipilian", "sound": "Tunog", "step": "Hakbang"}[w]
         return f"{base} {n}"
 
-    # fallback: keep english
     return s
 
 def translate_emotion_en_to_tl(text: str) -> str:
@@ -106,9 +92,6 @@ def _upload_storage(bucket: str, file, object_path: str) -> str:
 
 
 def _delete_storage_path(storage_path: str) -> bool:
-    """
-    storage_path format: "<bucket>/<object_path>"
-    """
     if not storage_path or not isinstance(storage_path, str):
         return False
     if "/" not in storage_path:
@@ -164,13 +147,6 @@ def _normalize_lang(lang: str) -> str:
 
 
 def _normalize_choices(choices):
-    """
-    Preserve:
-      - key
-      - label (✅ mirrors key if missing)
-      - image (storage path)
-      - audio (storage path)
-    """
     out = []
     for c in _ensure_list(choices):
         if not isinstance(c, dict):
@@ -183,7 +159,7 @@ def _normalize_choices(choices):
         if isinstance(label, str):
             label = label.strip() or key
         else:
-            label = key  # ✅ label not null
+            label = key
 
         out.append(
             {
@@ -210,31 +186,24 @@ def _validate_type_and_layout(a_type: str, layout: str):
 # Helpers for consistent DB format
 # -------------------------
 def _make_i18n_branch_from_body(i: dict, layout: str):
-    """
-    Returns a normalized i18n branch shaped like your examples.
-    """
     i = _ensure_dict(i)
     layout = (layout or "").lower().strip()
 
     branch = {}
 
-    # media
     if "prompt_image" in i:
         branch["prompt_image"] = i.get("prompt_image")
     if "prompt_audio" in i:
         branch["prompt_audio"] = i.get("prompt_audio")
 
-    # mcq-like layouts: choices + correct
     if layout in ("sound", "image", "sequence", "choose"):
         branch["choices"] = _normalize_choices(i.get("choices") or [])
         branch["correct"] = i.get("correct")
 
-    # asr
     if layout == "asr":
         if "expected_speech" in i:
             branch["expected_speech"] = i.get("expected_speech")
 
-    # emotion imitation special
     if layout == "emotion":
         if "expected_emotion" in i:
             branch["expected_emotion"] = i.get("expected_emotion")
@@ -243,9 +212,6 @@ def _make_i18n_branch_from_body(i: dict, layout: str):
 
 
 def _auto_translate_en_branch_to_tl(en_branch: dict, layout: str) -> dict:
-    """
-    Creates a TL branch from an EN branch, keeping media paths unchanged.
-    """
     layout = (layout or "").lower().strip()
     en_branch = _ensure_dict(en_branch)
 
@@ -270,7 +236,6 @@ def _auto_translate_en_branch_to_tl(en_branch: dict, layout: str) -> dict:
             )
         tl["choices"] = tl_choices
 
-        # Map correct by index
         correct_en = (en_branch.get("correct") or "").strip()
         if correct_en:
             en_keys = [(_ensure_dict(x).get("key") or "").strip() for x in choices]
@@ -303,11 +268,6 @@ def _auto_translate_en_branch_to_tl(en_branch: dict, layout: str) -> dict:
 
 
 def _make_data_for_activity(layout: str, i18n_in: dict) -> dict:
-    """
-    Builds the `data` json to match your required formats.
-    - For sound/image/sequence/choose/asr: { layout, i18n: { en: {...}, tl: {...} } }
-    - For emotion imitation: { layout:"emotion", expected_emotion_en, expected_emotion_tl }
-    """
     layout = (layout or "").lower().strip()
     i18n_in = _ensure_dict(i18n_in)
 
@@ -326,7 +286,32 @@ def _make_data_for_activity(layout: str, i18n_in: dict) -> dict:
 
 
 # -------------------------
-# Media URL helpers (always return displayable URLs)
+# Soft-delete helpers (Activities)
+# -------------------------
+def _resequence_activities(lesson_id: int):
+    """
+    Ensures active activities are 1..N (no gaps).
+    """
+    sb = _sb()
+    rows = (
+        sb.table("activities")
+        .select("id")
+        .eq("lesson_id", lesson_id)
+        .eq("is_active", True)
+        .order("sort_order")
+        .execute()
+        .data
+        or []
+    )
+
+    for idx, r in enumerate(rows, start=1):
+        sb.table("activities").update({"sort_order": idx}).eq("id", r["id"]).execute()
+
+    return rows
+
+
+# -------------------------
+# Media URL helpers
 # -------------------------
 def _resolve_media_branch_for_frontend(activity: dict, lang: str) -> dict:
     a = dict(activity or {})
@@ -358,7 +343,6 @@ def _resolve_media_branch_for_frontend(activity: dict, lang: str) -> dict:
         )
     payload["choices"] = out_choices
 
-    # emotion imitation special: expose expected_emotion in payload based on lang
     data = _ensure_dict(a.get("data"))
     if (data.get("layout") or "").lower().strip() == "emotion":
         exp = data.get("expected_emotion_tl") if lang == "tl" else data.get("expected_emotion_en")
@@ -400,12 +384,17 @@ def get_lessons(chapter_id: int):
 @manage_lessons_bp.get("/lessons/<int:lesson_id>/activities")
 @require_teacher
 def get_activities_for_lesson(lesson_id: int):
+    """
+    ✅ only active activities
+    ✅ always ordered
+    """
     lang = _normalize_lang(request.args.get("lang") or "en")
     res = (
         _sb()
         .table("activities")
         .select("*")
         .eq("lesson_id", lesson_id)
+        .eq("is_active", True)
         .order("sort_order")
         .execute()
     )
@@ -416,7 +405,7 @@ def get_activities_for_lesson(lesson_id: int):
 
 
 # -------------------------
-# (Optional) Translation endpoint (still works offline now)
+# Translation endpoint
 # -------------------------
 @manage_lessons_bp.post("/translate")
 @require_teacher
@@ -456,7 +445,6 @@ def translate_payload():
         if payload.get(k):
             out[k] = payload.get(k)
 
-    # Map correct by index if present
     if payload.get("correct") and out.get("choices"):
         correct_en = (payload.get("correct") or "").strip()
         en_keys = [
@@ -476,7 +464,7 @@ def translate_payload():
 
 
 # -------------------------
-# Create Activity (Question)
+# Create Activity
 # -------------------------
 @manage_lessons_bp.post("/lessons/<int:lesson_id>/activities")
 @require_teacher
@@ -499,14 +487,24 @@ def create_activity_for_lesson(lesson_id: int):
         return jsonify({"error": "prompt is required"}), 400
 
     i = _ensure_dict(body.get("i18n") or {})
-    next_sort = _get_next_sort_order("activities", where={"lesson_id": lesson_id})
 
-    # ✅ i18n EN branch
+    # ✅ next sort order only among active
+    q = (
+        _sb()
+        .table("activities")
+        .select("sort_order")
+        .eq("lesson_id", lesson_id)
+        .eq("is_active", True)
+        .order("sort_order", desc=True)
+        .limit(1)
+        .execute()
+    )
+    rows = q.data or []
+    next_sort = int(rows[0]["sort_order"]) + 1 if rows else 1
+
     en_branch = _make_i18n_branch_from_body(i, layout)
-    # ✅ auto TL branch for create
     tl_branch = _auto_translate_en_branch_to_tl(en_branch, layout)
 
-    # ✅ data in required format
     if layout == "emotion":
         data = _make_data_for_activity(
             layout,
@@ -518,11 +516,10 @@ def create_activity_for_lesson(lesson_id: int):
     else:
         data = _make_data_for_activity(layout, {"en": en_branch, "tl": tl_branch})
 
-    # ✅ prompt_tl must exist for list display when toggling TL
     prompt_en = prompt if lang == "en" else None
     prompt_tl = prompt if lang == "tl" else None
     if lang == "en":
-        prompt_tl = translate_en_to_tl(prompt)  # auto-fill TL prompt on create
+        prompt_tl = translate_en_to_tl(prompt)
 
     insert_row = {
         "lesson_id": lesson_id,
@@ -531,6 +528,8 @@ def create_activity_for_lesson(lesson_id: int):
         "data": data,
         "prompt_en": prompt_en,
         "prompt_tl": prompt_tl,
+        "is_active": True,      # ✅ important
+        "deleted_at": None,     # ✅ important
     }
 
     ins = _sb().table("activities").insert(insert_row).execute()
@@ -552,7 +551,14 @@ def patch_activity(activity_id: int):
     body = request.get_json(force=True) or {}
     lang = _normalize_lang(body.get("lang") or "en")
 
-    existing = _sb().table("activities").select("*").eq("id", activity_id).limit(1).execute()
+    existing = (
+        _sb()
+        .table("activities")
+        .select("*")
+        .eq("id", activity_id)
+        .limit(1)
+        .execute()
+    )
     if not existing.data:
         return jsonify({"error": "Activity not found"}), 404
 
@@ -576,7 +582,6 @@ def patch_activity(activity_id: int):
     if new_type is not None:
         update_row["type"] = (new_type or "").strip().lower()
 
-    # ✅ prompt_tl auto-fill when editing EN, never overwrite manual TL unless forced
     new_prompt = body.get("prompt")
     if new_prompt is not None:
         if lang == "en":
@@ -586,11 +591,9 @@ def patch_activity(activity_id: int):
         else:
             update_row["prompt_tl"] = new_prompt
 
-    # Build normalized branch from incoming i18n
     i_in = _ensure_dict(body.get("i18n") or {})
     branch_in = _make_i18n_branch_from_body(i_in, effective_layout)
 
-    # Emotion imitation: special root format
     if effective_layout == "emotion":
         expected_en = data.get("expected_emotion_en")
         expected_tl = data.get("expected_emotion_tl")
@@ -637,12 +640,31 @@ def patch_activity(activity_id: int):
 
 
 # -------------------------
-# Delete Activity
+# Soft Delete Activity (INACTIVE)
 # -------------------------
 @manage_lessons_bp.delete("/activities/<int:activity_id>")
 @require_teacher
 def delete_activity(activity_id: int):
-    _sb().table("activities").delete().eq("id", activity_id).execute()
+    sb = _sb()
+
+    # find activity + lesson
+    res = sb.table("activities").select("id, lesson_id").eq("id", activity_id).limit(1).execute()
+    if not res.data:
+        return jsonify({"error": "Activity not found"}), 404
+
+    lesson_id = int(res.data[0]["lesson_id"])
+
+    # ✅ soft delete
+    sb.table("activities").update(
+        {
+            "is_active": False,
+            "deleted_at": datetime.now(timezone.utc).isoformat(),
+        }
+    ).eq("id", activity_id).execute()
+
+    # ✅ resequence remaining actives to 1..N
+    _resequence_activities(lesson_id)
+
     return jsonify({"ok": True})
 
 
@@ -814,7 +836,6 @@ def patch_chapter(chapter_id):
     upd = {}
     if title_en:
         upd["title_en"] = title_en
-        # ✅ auto-fill TL if teacher didn't type TL
         if not title_tl:
             upd["title_tl"] = translate_en_to_tl(title_en)
 
@@ -870,11 +891,9 @@ def patch_lesson(lesson_id):
     if title_tl:
         upd["title_tl"] = title_tl
 
-    # descriptions: keep your original behavior (empty string -> None)
     upd["description_en"] = desc_en if desc_en != "" else None
     upd["description_tl"] = desc_tl if desc_tl != "" else None
 
-    # ✅ if teacher provided EN description but left TL blank, auto-fill TL
     if desc_en is not None and (desc_tl is None or desc_tl == ""):
         upd["description_tl"] = translate_en_to_tl(desc_en) if (desc_en or "").strip() else None
 
@@ -900,3 +919,143 @@ def patch_lesson(lesson_id):
         return jsonify({"error": "Lesson not found"}), 404
 
     return jsonify({"lesson": _resolve_lesson(res.data[0])})
+
+
+# -------------------------
+# Reorder endpoints
+# -------------------------
+def _ensure_int_ids(ids):
+    out = []
+    for x in (ids or []):
+        try:
+            out.append(int(x))
+        except Exception:
+            pass
+    return out
+
+
+@manage_lessons_bp.patch("/chapters/reorder")
+@require_teacher
+def reorder_chapters():
+    body = request.get_json(silent=True) or {}
+    ids = _ensure_int_ids(body.get("ids"))
+    if not ids:
+        return jsonify({"error": "ids is required"}), 400
+
+    sb = _sb()
+
+    # validate all exist
+    res = sb.table("chapters").select("id").in_("id", ids).execute()
+    rows = res.data or []
+    existing = {int(r["id"]) for r in rows if r.get("id") is not None}
+    if len(existing) != len(set(ids)):
+        return jsonify({"error": "One or more chapter ids not found"}), 400
+
+    # ✅ update only (no insert needed)
+    for i, cid in enumerate(ids, start=1):
+        r = sb.table("chapters").update({"sort_order": i}).eq("id", cid).execute()
+        # optional: if you want to see exact supabase error
+        if getattr(r, "error", None):
+            return jsonify({"error": f"Reorder failed: {r.error}"}), 500
+
+    return jsonify({"ok": True})
+
+@manage_lessons_bp.patch("/chapters/<int:chapter_id>/lessons/reorder")
+@require_teacher
+def reorder_lessons(chapter_id: int):
+    body = request.get_json(silent=True) or {}
+    ids = _ensure_int_ids(body.get("ids"))
+    if not ids:
+        return jsonify({"error": "ids is required"}), 400
+
+    sb = _sb()
+
+    try:
+        # Validate: lessons exist + belong to this chapter
+        res = (
+            sb.table("lessons")
+            .select("id, chapter_id")
+            .in_("id", ids)
+            .execute()
+        )
+        rows = res.data or []
+        if len(rows) != len(set(ids)):
+            return jsonify({"error": "One or more lesson ids not found"}), 400
+
+        for r in rows:
+            if int(r.get("chapter_id") or -1) != int(chapter_id):
+                return jsonify({"error": "All lesson ids must belong to this chapter"}), 400
+
+        # Pick a TEMP base that cannot collide
+        mx = (
+            sb.table("lessons")
+            .select("sort_order")
+            .eq("chapter_id", chapter_id)
+            .order("sort_order", desc=True)
+            .limit(1)
+            .execute()
+        )
+        max_sort = int(mx.data[0]["sort_order"]) if (mx.data and mx.data[0].get("sort_order") is not None) else 0
+        temp_base = max_sort + 1000  # big enough to avoid conflicts
+
+        # Phase 1: set TEMP sort_order (unique)
+        for i, lid in enumerate(ids, start=1):
+            upd = sb.table("lessons").update({"sort_order": temp_base + i}).eq("id", lid).execute()
+            if getattr(upd, "error", None):
+                return jsonify({"error": str(upd.error)}), 400
+            if upd.data == []:
+                return jsonify({"error": "Update blocked (RLS/policy)"}), 403
+
+        # Phase 2: set FINAL sort_order (1..N)
+        for i, lid in enumerate(ids, start=1):
+            upd = sb.table("lessons").update({"sort_order": i}).eq("id", lid).execute()
+            if getattr(upd, "error", None):
+                return jsonify({"error": str(upd.error)}), 400
+            if upd.data == []:
+                return jsonify({"error": "Update blocked (RLS/policy)"}), 403
+
+        return jsonify({"ok": True})
+
+    except Exception as e:
+        return jsonify({"error": f"Reorder crashed: {type(e).__name__}: {e}"}), 500
+
+
+
+
+@manage_lessons_bp.patch("/lessons/<int:lesson_id>/activities/reorder")
+@require_teacher
+def reorder_activities(lesson_id: int):
+    body = request.get_json(silent=True) or {}
+    ids = _ensure_int_ids(body.get("ids"))
+    if not ids:
+        return jsonify({"error": "ids is required"}), 400
+
+    sb = _sb()
+
+    # only allow reordering active activities in this lesson
+    res = (
+        sb.table("activities")
+        .select("id, lesson_id, is_active")
+        .in_("id", ids)
+        .execute()
+    )
+    rows = res.data or []
+    if len(rows) != len(set(ids)):
+        return jsonify({"error": "One or more activity ids not found"}), 400
+
+    for r in rows:
+        if int(r.get("lesson_id") or -1) != int(lesson_id):
+            return jsonify({"error": "All activity ids must belong to this lesson"}), 400
+        if r.get("is_active") is False:
+            return jsonify({"error": "Cannot reorder inactive activities"}), 400
+
+    #  update only
+    for i, aid in enumerate(ids, start=1):
+        r = sb.table("activities").update({"sort_order": i}).eq("id", aid).execute()
+        if getattr(r, "error", None):
+            return jsonify({"error": f"Reorder failed: {r.error}"}), 500
+
+    #  ensure actives are resequenced (no gaps)
+    _resequence_activities(lesson_id)
+
+    return jsonify({"ok": True})
