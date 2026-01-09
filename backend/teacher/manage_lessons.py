@@ -352,6 +352,34 @@ def _resolve_media_branch_for_frontend(activity: dict, lang: str) -> dict:
     a["payload"] = payload
     return a
 
+def _extract_media_paths_from_activity_row(row: dict) -> list[str]:
+    """
+    Best-effort: pulls storage paths out of activity.data.i18n.en/tl branches.
+    Returns storage paths like 'hmh-images/...', 'hmh-audio/...'
+    """
+    out = []
+
+    data = _ensure_dict(row.get("data"))
+    i18n = _ensure_dict(data.get("i18n"))
+
+    for lang_key in ("en", "tl"):
+        branch = _ensure_dict(i18n.get(lang_key))
+
+        for k in ("prompt_image", "prompt_audio"):
+            p = branch.get(k)
+            if isinstance(p, str) and p:
+                out.append(p)
+
+        choices = _ensure_list(branch.get("choices"))
+        for c in choices:
+            c = _ensure_dict(c)
+            for k in ("image", "audio"):
+                p = c.get(k)
+                if isinstance(p, str) and p:
+                    out.append(p)
+
+    # de-dupe
+    return list(dict.fromkeys(out))
 
 # -------------------------
 # Chapters / Lessons
@@ -385,8 +413,8 @@ def get_lessons(chapter_id: int):
 @require_teacher
 def get_activities_for_lesson(lesson_id: int):
     """
-    ✅ only active activities
-    ✅ always ordered
+     only active activities
+     always ordered
     """
     lang = _normalize_lang(request.args.get("lang") or "en")
     res = (
@@ -637,6 +665,90 @@ def patch_activity(activity_id: int):
     out = pick_branch(updated, lang)
     out = _resolve_media_branch_for_frontend(out, lang)
     return jsonify({"activity": out})
+
+@manage_lessons_bp.delete("/lessons/<int:lesson_id>")
+@require_teacher
+def delete_lesson_hard(lesson_id: int):
+    sb = _sb()
+
+    # lesson row
+    lres = sb.table("lessons").select("id, cover_path").eq("id", lesson_id).limit(1).execute()
+    if not lres.data:
+        return jsonify({"error": "Lesson not found"}), 404
+
+    lesson = lres.data[0]
+    cover_path = lesson.get("cover_path")
+
+    # activities (delete rows + try cleanup media)
+    ares = sb.table("activities").select("id, data").eq("lesson_id", lesson_id).execute()
+    activities = ares.data or []
+
+    media_paths = []
+    for a in activities:
+        media_paths.extend(_extract_media_paths_from_activity_row(a))
+
+    # delete activities rows
+    sb.table("activities").delete().eq("lesson_id", lesson_id).execute()
+
+    # delete lesson row
+    sb.table("lessons").delete().eq("id", lesson_id).execute()
+
+    # cleanup storage best-effort
+    if isinstance(cover_path, str) and cover_path:
+        _delete_storage_path(cover_path)
+    for p in media_paths:
+        _delete_storage_path(p)
+
+    return jsonify({"ok": True})
+
+
+@manage_lessons_bp.delete("/chapters/<int:chapter_id>")
+@require_teacher
+def delete_chapter_hard(chapter_id: int):
+    sb = _sb()
+
+    # chapter row
+    cres = sb.table("chapters").select("id, bg_path").eq("id", chapter_id).limit(1).execute()
+    if not cres.data:
+        return jsonify({"error": "Chapter not found"}), 404
+
+    chapter = cres.data[0]
+    bg_path = chapter.get("bg_path")
+
+    # lessons under chapter
+    lres = sb.table("lessons").select("id, cover_path").eq("chapter_id", chapter_id).execute()
+    lessons = lres.data or []
+
+    cover_paths = [l.get("cover_path") for l in lessons if isinstance(l.get("cover_path"), str)]
+
+    # activities under those lessons
+    media_paths = []
+    for l in lessons:
+        lid = l.get("id")
+        if not lid:
+            continue
+        ares = sb.table("activities").select("id, data").eq("lesson_id", lid).execute()
+        for a in (ares.data or []):
+            media_paths.extend(_extract_media_paths_from_activity_row(a))
+
+        # delete activities per lesson
+        sb.table("activities").delete().eq("lesson_id", lid).execute()
+
+    # delete lessons
+    sb.table("lessons").delete().eq("chapter_id", chapter_id).execute()
+
+    # delete chapter
+    sb.table("chapters").delete().eq("id", chapter_id).execute()
+
+    # cleanup storage best-effort
+    if isinstance(bg_path, str) and bg_path:
+        _delete_storage_path(bg_path)
+    for p in cover_paths:
+        _delete_storage_path(p)
+    for p in media_paths:
+        _delete_storage_path(p)
+
+    return jsonify({"ok": True})
 
 
 # -------------------------

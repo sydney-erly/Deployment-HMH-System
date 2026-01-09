@@ -4,6 +4,7 @@
 // updated 23/12/2025 (+ hover pencil edit for chapter/lesson)
 // updated 27/12/2025 (+ drag-drop reorder + long-press drag on mobile)
 // updated 27/12/2025 (+ soft-delete activity + resequence-safe UI numbering)
+// updated 09/01/2026 (+ delete chapter/lesson icons + delete in edit modal)
 
 import hmhIcon from "../assets/hmh_icon.png";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -21,13 +22,13 @@ import {
   FiImage,
   FiMusic,
   FiEdit2,
+  FiTrash2,
   FiX,
   FiMove,
 } from "react-icons/fi";
 
 import CreateChapterDrawer from "../components/CreateChapterDrawer";
 import CreateLessonDrawer from "../components/CreateLessonDrawer";
-import RightDrawer from "../components/RightDrawer";
 
 //  Drag & Drop (DnD Kit)
 import {
@@ -154,8 +155,6 @@ export default function LessonManagement() {
   // -------------------------
   // ✅ DnD sensors (desktop + mobile long-press)
   // -------------------------
-  // - PointerSensor: drag after moving 8px (prevents accidental click-drag)
-  // - TouchSensor: drag after long-press delay (prevents scroll hijack)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, {
@@ -388,6 +387,60 @@ export default function LessonManagement() {
       setMetaErr(e?.message || "Save failed");
     } finally {
       setMetaSaving(false);
+    }
+  }
+
+  // -------------------------
+  // ✅ Delete Chapter / Lesson
+  // -------------------------
+  async function deleteChapter(ch) {
+    if (!ch?.id) return;
+    const title = (lang === "tl" ? ch.title_tl : ch.title_en) || "this chapter";
+    if (!confirm(`Delete "${title}"?\n\nThis will also delete its lessons and activities.`))
+      return;
+
+    try {
+      await apiFetch(`/teacher/manage-lessons/chapters/${ch.id}`, {
+        token,
+        method: "DELETE",
+      });
+
+      setChapters((prev) => prev.filter((x) => x.id !== ch.id));
+
+      if (selectedChapter?.id === ch.id) {
+        setSelectedChapter(null);
+        setLessons([]);
+        setSelectedLesson(null);
+        setActivities([]);
+        setStep("chapters");
+      }
+    } catch (e) {
+      console.error(e);
+      alert(e?.message || "Failed to delete chapter");
+    }
+  }
+
+  async function deleteLesson(lesson) {
+    if (!lesson?.id) return;
+    const title = (lang === "tl" ? lesson.title_tl : lesson.title_en) || "this lesson";
+    if (!confirm(`Delete "${title}"?\n\nThis will also delete its activities.`)) return;
+
+    try {
+      await apiFetch(`/teacher/manage-lessons/lessons/${lesson.id}`, {
+        token,
+        method: "DELETE",
+      });
+
+      setLessons((prev) => prev.filter((x) => x.id !== lesson.id));
+
+      if (selectedLesson?.id === lesson.id) {
+        setSelectedLesson(null);
+        setActivities([]);
+        setStep("lessons");
+      }
+    } catch (e) {
+      console.error(e);
+      alert(e?.message || "Failed to delete lesson");
     }
   }
 
@@ -1040,18 +1093,17 @@ export default function LessonManagement() {
           openEditor(updatedOrCreated);
         }
       } else {
-        const res = await apiFetch(
-          `/teacher/manage-lessons/activities/${editing.id}`,
-          {
-            token,
-            method: "PATCH",
-            body,
-          }
-        );
+        const res = await apiFetch(`/teacher/manage-lessons/activities/${editing.id}`, {
+          token,
+          method: "PATCH",
+          body,
+        });
         updatedOrCreated = res?.activity;
 
         if (updatedOrCreated) {
-          setActivities((prev) => prev.map((x) => (x.id === updatedOrCreated.id ? updatedOrCreated : x)));
+          setActivities((prev) =>
+            prev.map((x) => (x.id === updatedOrCreated.id ? updatedOrCreated : x))
+          );
           setEditing(updatedOrCreated);
           openEditor(updatedOrCreated);
         }
@@ -1088,7 +1140,6 @@ export default function LessonManagement() {
         method: "DELETE",
       });
 
-      // ✅ refetch so list is correct and resequenced
       await refreshActivities();
 
       setEditing(null);
@@ -1136,16 +1187,7 @@ export default function LessonManagement() {
   // -------------------------
   // Dropzone UI component
   // -------------------------
-  function Dropzone({
-    icon,
-    title,
-    subtitle,
-    hasFile,
-    preview,
-    onBrowse,
-    onRemove,
-    kind,
-  }) {
+  function Dropzone({ icon, title, subtitle, hasFile, preview, onBrowse, onRemove, kind }) {
     return (
       <div className="rounded-3xl bg-white">
         <div className="flex items-center justify-between gap-2">
@@ -1394,8 +1436,6 @@ export default function LessonManagement() {
                   <span className="font-semibold text-gray-800">Activities</span>
                 </div>
               )}
-
-             
             </div>
 
             <div className="flex gap-2">
@@ -1515,6 +1555,20 @@ export default function LessonManagement() {
                             >
                               <FiEdit2 />
                             </button>
+
+                            {/* hover trash */}
+                            <button
+                              type="button"
+                              className="absolute top-3 right-14 opacity-0 group-hover:opacity-100 transition rounded-2xl bg-white/95 border border-red-200 shadow-sm p-2 hover:bg-red-50 text-red-700"
+                              title="Delete chapter"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                deleteChapter(ch);
+                              }}
+                            >
+                              <FiTrash2 />
+                            </button>
                           </SortableCard>
                         );
                       })}
@@ -1598,9 +1652,7 @@ export default function LessonManagement() {
                                     {desc}
                                   </div>
                                 ) : (
-                                  <div className="text-sm text-gray-400 mt-1">
-                                    No description
-                                  </div>
+                                  <div className="text-sm text-gray-400 mt-1">No description</div>
                                 )}
                                 <div className="text-xs text-gray-500 mt-2">{l.code}</div>
                               </div>
@@ -1617,6 +1669,20 @@ export default function LessonManagement() {
                               }}
                             >
                               <FiEdit2 />
+                            </button>
+
+                            {/* hover trash */}
+                            <button
+                              type="button"
+                              className="absolute top-3 right-14 opacity-0 group-hover:opacity-100 transition rounded-2xl bg-white/95 border border-red-200 shadow-sm p-2 hover:bg-red-50 text-red-700"
+                              title="Delete lesson"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                deleteLesson(l);
+                              }}
+                            >
+                              <FiTrash2 />
                             </button>
                           </SortableCard>
                         );
@@ -1671,8 +1737,6 @@ export default function LessonManagement() {
                           `/teacher/manage-lessons/lessons/${selectedLesson.id}/activities/reorder`,
                           next.map((a) => a.id)
                         );
-                        // optional: refresh to match backend normalization
-                        // await refreshActivities();
                       } catch (e) {
                         console.error(e);
                         setActivities(prev);
@@ -1878,7 +1942,9 @@ export default function LessonManagement() {
                     <textarea
                       className="w-full mt-1 px-3 py-2 rounded-2xl border border-gray-200 soft-ring min-h-[140px] resize-none"
                       value={metaForm.description_en}
-                      onChange={(e) => setMetaForm((p) => ({ ...p, description_en: e.target.value }))}
+                      onChange={(e) =>
+                        setMetaForm((p) => ({ ...p, description_en: e.target.value }))
+                      }
                       placeholder="English description"
                     />
                   </div>
@@ -1888,7 +1954,9 @@ export default function LessonManagement() {
                     <textarea
                       className="w-full mt-1 px-3 py-2 rounded-2xl border border-gray-200 soft-ring min-h-[140px] resize-none"
                       value={metaForm.description_tl}
-                      onChange={(e) => setMetaForm((p) => ({ ...p, description_tl: e.target.value }))}
+                      onChange={(e) =>
+                        setMetaForm((p) => ({ ...p, description_tl: e.target.value }))
+                      }
                       placeholder="Tagalog description"
                     />
                   </div>
@@ -1896,23 +1964,54 @@ export default function LessonManagement() {
               )}
             </div>
 
-            <div className="p-4 md:p-5 border-t border-gray-200 flex items-center justify-end gap-2 shrink-0 bg-white">
-              <button
-                className="px-4 py-2 rounded-2xl bg-gray-100 hover:bg-gray-200"
-                onClick={closeMetaEditor}
-                type="button"
-              >
-                Cancel
-              </button>
+            {/* ✅ footer with delete */}
+            <div className="p-4 md:p-5 border-t border-gray-200 flex items-center justify-between gap-2 shrink-0 bg-white">
+              <div>
+                {metaEditKind === "chapter" && metaEditItem?.id && (
+                  <button
+                    className="px-4 py-2 rounded-2xl border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                    onClick={() => {
+                      deleteChapter(metaEditItem);
+                      closeMetaEditor();
+                    }}
+                    type="button"
+                  >
+                    Delete Chapter
+                  </button>
+                )}
 
-              <button
-                className="px-5 py-2 rounded-2xl bg-[#2E4bff] text-white hover:brightness-110 disabled:opacity-60"
-                onClick={saveMeta}
-                disabled={metaSaving}
-                type="button"
-              >
-                {metaSaving ? "Saving..." : "Save Changes"}
-              </button>
+                {metaEditKind === "lesson" && metaEditItem?.id && (
+                  <button
+                    className="px-4 py-2 rounded-2xl border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                    onClick={() => {
+                      deleteLesson(metaEditItem);
+                      closeMetaEditor();
+                    }}
+                    type="button"
+                  >
+                    Delete Lesson
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  className="px-4 py-2 rounded-2xl bg-gray-100 hover:bg-gray-200"
+                  onClick={closeMetaEditor}
+                  type="button"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  className="px-5 py-2 rounded-2xl bg-[#2E4bff] text-white hover:brightness-110 disabled:opacity-60"
+                  onClick={saveMeta}
+                  disabled={metaSaving}
+                  type="button"
+                >
+                  {metaSaving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2047,11 +2146,15 @@ export default function LessonManagement() {
                             : "border-gray-200"
                         }`}
                         value={form.expected_emotion || ""}
-                        onChange={(e) => setFormDirty((p) => ({ ...p, expected_emotion: e.target.value }))}
+                        onChange={(e) =>
+                          setFormDirty((p) => ({ ...p, expected_emotion: e.target.value }))
+                        }
                         placeholder={lang === "tl" ? "hal: masaya" : "e.g., happy"}
                       />
                       {computedErrors.expected_emotion && (
-                        <div className="text-xs text-red-600 mt-1">{computedErrors.expected_emotion}</div>
+                        <div className="text-xs text-red-600 mt-1">
+                          {computedErrors.expected_emotion}
+                        </div>
                       )}
                     </div>
                   )}
@@ -2068,11 +2171,15 @@ export default function LessonManagement() {
                             : "border-gray-200"
                         }`}
                         value={form.expected_speech || ""}
-                        onChange={(e) => setFormDirty((p) => ({ ...p, expected_speech: e.target.value }))}
+                        onChange={(e) =>
+                          setFormDirty((p) => ({ ...p, expected_speech: e.target.value }))
+                        }
                         placeholder={lang === "tl" ? "hal: baka" : "e.g., cow"}
                       />
                       {computedErrors.expected_speech && (
-                        <div className="text-xs text-red-600 mt-1">{computedErrors.expected_speech}</div>
+                        <div className="text-xs text-red-600 mt-1">
+                          {computedErrors.expected_speech}
+                        </div>
                       )}
                     </div>
                   )}
