@@ -1971,6 +1971,7 @@ def student_lesson_table(students_id, lesson_id):
           .select("id, sort_order, prompt_en, spiral_tag")
           .eq("lesson_id", lesson_id)
           .eq("is_active", True)
+          .is_("deleted_at", None)
           .order("sort_order")
     )
 
