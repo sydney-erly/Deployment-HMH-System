@@ -1970,6 +1970,7 @@ def student_lesson_table(students_id, lesson_id):
         sb.table("activities")
           .select("id, sort_order, prompt_en, spiral_tag")
           .eq("lesson_id", lesson_id)
+          .eq("is_active", True)
           .order("sort_order")
     )
 
